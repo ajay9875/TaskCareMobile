@@ -49,5 +49,27 @@ Join our community of developers creating universal apps.
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
 
-## Command to make Over The Air Updates
-eas update --branch preview --message "Code came back to 3rd september working"   
+# 1. Command to install fresh app and run locally(Android studio): Use after uninstalling app from Android Studio Emulator
+npx expo start --go
+npx expo prebuild --clean
+npx expo prebuild --platform android
+npx expo start --android | npx expo start --clear | npx expo start --go | npx expo start --go --clear
+# Press s to switch for Expo GO from Development and Press Enter after that press a to open app in the Android studio
+# To reinstall fresh expo go at android Studio
+npx expo start --android --go
+
+# 2. To create a new apk file at expo run below command
+npx expo prebuild --clean
+npx expo prebuild --platform android
+eas build --platform android --profile preview
+
+# 3. To push only new changes to the EAS which will be affecting in the user app by updating manually from downloaded app before
+# Please note that version of downloaded and updated app version must be same 
+eas update:configure
+npx expo prebuild --platform android
+eas update --branch preview --message "Updated claories calculating multiplier from 0.05 to 0.0575"
+# after runing above command please select environment according to deployed your code before()
+
+# 4. To stop and start server use this command if android device is not running and show the already runing
+adb start-server
+adb kill-server
