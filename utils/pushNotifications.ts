@@ -11,7 +11,6 @@ const PROJECT_ID = 'f10f38af-0647-45b5-9870-484ef77bd853';
 let registrationInFlight: Promise<string | null> | null = null;
 
 export const registerForPushNotifications = async (): Promise<string | null> => {
-  // Prevent concurrent calls
   if (registrationInFlight) return registrationInFlight;
   registrationInFlight = doRegister();
   try {
@@ -24,14 +23,18 @@ export const registerForPushNotifications = async (): Promise<string | null> => 
 const doRegister = async (): Promise<string | null> => {
   console.log('[push] starting registration');
 
-  if (!Device.isDevice) {
-    console.log('[push] skipped: not a physical device');
+  // ✅ Only iOS simulators truly cannot get push tokens.
+  // Android emulators with Play Services CAN register — don't block them.
+  if (Platform.OS === 'ios' && !Device.isDevice) {
+    console.log('[push] skipped: iOS simulator has no push support');
     return null;
   }
 
-  // ✅ DO NOT bail out on Expo Go. Instead, skip only the *remote* push
-  // token part if running in Expo Go, but still try to register.
-  // On a physical device with a dev build, this works fully.
+  if (Platform.OS === 'android' && !Device.isDevice) {
+    console.log('[push] Android emulator detected — attempting token anyway');
+  }
+
+  // Android channel setup (safe to call on both emulator and device)
   if (Platform.OS === 'android') {
     try {
       await Notifications.setNotificationChannelAsync('default', {
@@ -45,14 +48,15 @@ const doRegister = async (): Promise<string | null> => {
     }
   }
 
+  // Permission check
   const existing = await Notifications.getPermissionsAsync();
   console.log('[push] permission status:', existing.status);
   let finalStatus = existing.status;
 
   if (existing.status !== 'granted') {
     const requested = await Notifications.requestPermissionsAsync();
-    console.log('[push] requested, result:', requested.status);
     finalStatus = requested.status;
+    console.log('[push] requested, result:', requested.status);
   }
 
   if (finalStatus !== 'granted') {
@@ -60,13 +64,15 @@ const doRegister = async (): Promise<string | null> => {
     return null;
   }
 
-  // ✅ Only attempt remote token in a dev/prod build, not Expo Go.
-  // In Expo Go, expo-notifications can't produce a token (SDK 53+).
+  // Expo Go can't produce a remote token on SDK 53+
   if (Constants.appOwnership === 'expo') {
-    console.log('[push] Expo Go: skipping remote token (SDK 53+ removes push in Expo Go). Use a dev build.');
+    console.log(
+      '[push] Expo Go: cannot get remote token (SDK 53+). Use a dev build.'
+    );
     return null;
   }
 
+  // Get the token
   try {
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: PROJECT_ID,
@@ -76,6 +82,7 @@ const doRegister = async (): Promise<string | null> => {
 
     await AsyncStorage.setItem('@taskcare360_push_token', token);
 
+    // Send to backend
     const res = await fetch(`${API_BASE}/push-token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -93,8 +100,21 @@ const doRegister = async (): Promise<string | null> => {
 
     console.log('[push] ✅ token registered on backend');
     return token;
-  } catch (e) {
-    console.log('[push] getExpoPushTokenAsync failed:', e);
+  } catch (e: any) {
+    console.log('[push] getExpoPushTokenAsync failed:', e?.message || e);
+
+    // Specific help messages for common failures
+    const msg = String(e?.message || e);
+    if (msg.includes('FirebaseApp')) {
+      console.log(
+        '[push] Fix: add google-services.json to project root and rebuild'
+      );
+    } else if (msg.includes('FIS_AUTH_ERROR')) {
+      console.log('[push] Fix: FCM auth failed — check google-services.json');
+    } else if (msg.includes('projectId')) {
+      console.log('[push] Fix: ensure PROJECT_ID is correct in this file');
+    }
+
     return null;
   }
 };

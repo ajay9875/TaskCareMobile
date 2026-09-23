@@ -17,6 +17,8 @@
     },
     "android": {
       "package": "com.ajay.taskcare360",
+      "googleServicesFile": "./google-services.json",
+
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
