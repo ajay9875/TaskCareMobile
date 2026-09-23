@@ -40,7 +40,6 @@ const doRegister = async (): Promise<string | null> => {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'TaskCare 360',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
         vibrationPattern: [0, 250, 250, 250],
       });
     } catch (e) {
