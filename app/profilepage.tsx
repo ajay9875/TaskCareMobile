@@ -14,6 +14,8 @@ import {
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { openSupportEmail } from '@/utils/support';
+import { stopStepTracker } from '../utils/stepTracker';
+
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
@@ -117,6 +119,7 @@ export default function ProfileScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
+            await stopStepTracker();
             await fetch(`${API_BASE}/logout`, { credentials: 'include' });
           } catch (e) {
             // Proceed with client logout

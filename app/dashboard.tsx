@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { stopStepTracker } from '../utils/stepTracker';
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const TIMEOUT_MS = 10000;
@@ -226,6 +227,7 @@ export default function Dashboard() {
         style: 'destructive',
         onPress: async () => {
           try {
+            await stopStepTracker();
             await fetch(`${API_BASE}/logout`, { credentials: 'include' });
           } finally {
             router.dismissAll();

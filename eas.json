@@ -13,7 +13,6 @@
       "distribution": "internal",
       "channel": "preview",
       "node": "22.13.0",
-      "yarn": "1.22.19",
       "android": {
         "buildType": "apk"
       }

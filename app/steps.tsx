@@ -16,7 +16,12 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Pedometer } from "expo-sensors";
+import { 
+  isAvailableAsync,
+  getPermissionsAsync,
+  requestPermissionsAsync,
+  PermissionStatus 
+} from 'expo-pedometer';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -46,75 +51,77 @@ export default function StepsScreen() {
 
   const [hasNetError, setHasNetError] = useState(false);
 
-  const handlePermissionCheck = async (): Promise<boolean> => {
-    if (isCheckingPermissions.current) return false;
-    isCheckingPermissions.current = true;
+const handlePermissionCheck = async (): Promise<boolean> => {
+  if (isCheckingPermissions.current) return false;
+  isCheckingPermissions.current = true;
 
-    try {
-      const isAvailable = await Pedometer.isAvailableAsync();
-      if (!isAvailable) {
-        isCheckingPermissions.current = false;
-        return false;
-      }
+  try {
+    const available = await isAvailableAsync();
+    if (!available) {
+      isCheckingPermissions.current = false;
+      return false;
+    }
 
-      const existing = await Pedometer.getPermissionsAsync();
-      
-      if (existing.status === 'granted') {
+    const existing = await getPermissionsAsync();
+
+    if (existing.status === PermissionStatus.GRANTED) {
+      isCheckingPermissions.current = false;
+      return true;
+    }
+
+    if (existing.canAskAgain) {
+      const requested = await requestPermissionsAsync();
+      if (requested.status === PermissionStatus.GRANTED) {
         isCheckingPermissions.current = false;
         return true;
       }
 
-      if (existing.canAskAgain) {
-        const requested = await Pedometer.requestPermissionsAsync();
-        if (requested.status === 'granted') {
-          isCheckingPermissions.current = false;
-          return true;
-        }
-        
-        const updated = await Pedometer.getPermissionsAsync();
-        if (updated.canAskAgain) {
-          isCheckingPermissions.current = false;
-          return false;
-        }
+      const updated = await getPermissionsAsync();
+      if (!updated.canAskAgain) {
+        isCheckingPermissions.current = false;
+        // Fall through to the alert below
       }
-
-      Alert.alert(
-        "Physical Activity Permission Required",
-        "Required to track your steps.\n\n" +
-          "How to enable:\n" +
-          "1. Tap 'Open Settings' below.\n" +
-          "2. Select 'Permissions'.\n" +
-          "3. Tap 'Physical activity' (or 'Motion').\n" +
-          "4. Choose 'Allow'.",
-        [
-          { 
-            text: "Open Settings", 
-            onPress: async () => {
-              isCheckingPermissions.current = false;
-              await Linking.openSettings();
-            } 
-          },
-          { 
-            text: "Cancel", 
-            style: "cancel",
-            onPress: () => {
-              isCheckingPermissions.current = false;
-            }
-          }
-        ],
-        { 
-          cancelable: true,
-          onDismiss: () => { isCheckingPermissions.current = false; }
-        }
-      );
-
-      return false;
-    } catch (e) {
-      console.log("Permission check error:", e);
-      isCheckingPermissions.current = false;
-      return false;
     }
-  };
+
+    Alert.alert(
+      "Physical Activity Permission Required",
+      "Required to track your steps.\n\n" +
+        "How to enable:\n" +
+        "1. Tap 'Open Settings' below.\n" +
+        "2. Select 'Permissions'.\n" +
+        "3. Tap 'Physical activity' (or 'Motion').\n" +
+        "4. Choose 'Allow'.",
+      [
+        {
+          text: "Open Settings",
+          onPress: async () => {
+            isCheckingPermissions.current = false;
+            await Linking.openSettings();
+          },
+        },
+        {
+          text: "Cancel",
+          style: "cancel",
+          onPress: () => {
+            isCheckingPermissions.current = false;
+          },
+        },
+      ],
+      {
+        cancelable: true,
+        onDismiss: () => {
+          isCheckingPermissions.current = false;
+        },
+      }
+    );
+
+    return false;
+  } catch (e) {
+    console.log("Permission check error:", e);
+    isCheckingPermissions.current = false;
+    return false;
+  }
+};
 
   const fetchCloudMetrics = async () => {
     const controller = new AbortController();
@@ -126,8 +133,15 @@ export default function StepsScreen() {
       setIsTreadmillMode(isTreadmill);
       treadmillModeRef.current = isTreadmill;
 
-      const localBufferRaw = await AsyncStorage.getItem('unsynced_steps_buffer');
-      const localBuffer = localBufferRaw ? parseInt(localBufferRaw, 10) : 0;
+      // Read pending queue from the new tracker instead of the old buffer
+      const { getPendingQueue } = require('../utils/stepTracker');
+      const pendingEvents = await getPendingQueue();
+      const localBufferWalking = pendingEvents
+        .filter((e: any) => e.mode === 'walking')
+        .reduce((sum: number, e: any) => sum + e.delta, 0);
+      const localBufferTreadmill = pendingEvents
+        .filter((e: any) => e.mode === 'treadmill')
+        .reduce((sum: number, e: any) => sum + e.delta, 0);
 
       const activeParam = isTreadmill ? 'treadmill' : 'walking';
       const response = await fetch(`${API_BASE}/steps/data?mode=${activeParam}`, { 
@@ -152,9 +166,12 @@ export default function StepsScreen() {
       const data = await response.json();
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
+
+        // Cache the target so the notification module can read it
+        await AsyncStorage.setItem('@taskcare360_cached_target', String(data.target_steps));
         
-        const freshWalking = data.walking_steps + (!isTreadmill ? localBuffer : 0);
-        const freshTreadmill = data.treadmill_steps + (isTreadmill ? localBuffer : 0);
+        const freshWalking = data.walking_steps + localBufferWalking;
+        const freshTreadmill = data.treadmill_steps + localBufferTreadmill;
 
         setWalkingSteps(prev => Math.max(prev, freshWalking));
         setTreadmillSteps(prev => Math.max(prev, freshTreadmill));
@@ -219,6 +236,9 @@ export default function StepsScreen() {
 
       if (data.status === "success") {
         setTargetSteps(parsedGoal);
+          
+        await AsyncStorage.setItem('@taskcare360_cached_target', String(parsedGoal));
+
         setModalVisible(false);
       } else {
         Alert.alert("Error", data.error || "Failed to update target goal.");

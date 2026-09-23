@@ -11,21 +11,19 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ajay.taskcare360",
       "infoPlist": {
-        "UIBackgroundModes": [
-          "fetch",
-          "processing"
-        ],
+        "UIBackgroundModes": ["fetch", "processing"],
         "NSMotionUsageDescription": "Allow TaskCare 360 to track your steps even when the app is closed."
       }
     },
     "android": {
       "package": "com.ajay.taskcare360",
-      "versionCode": 4,
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_HEALTH",
+        "POST_NOTIFICATIONS",
+        "SCHEDULE_EXACT_ALARM",
         "android.permission.ACTIVITY_RECOGNITION"
       ],
       "adaptiveIcon": {
@@ -35,66 +33,51 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": {
-            "scheme": "mailto"
-          }
+          "data": { "scheme": "mailto" }
         },
         {
           "action": "VIEW",
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ],
-          "data": {
-            "scheme": "taskcaremobile",
-            "host": "login"
-          }
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": { "scheme": "taskcaremobile", "host": "login" }
         },
         {
           "action": "VIEW",
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ],
-          "data": {
-            "scheme": "taskcaremobile",
-            "host": "support"
-          }
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": { "scheme": "taskcaremobile", "host": "support" }
         },
         {
           "action": "VIEW",
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ],
-          "data": {
-            "scheme": "taskcaremobile",
-            "host": "dashboard"
-          }
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": { "scheme": "taskcaremobile", "host": "dashboard" }
         }
       ]
     },
     "plugins": [
+      "./plugins/withJdkHome",
       "expo-router",
-      [
-        "expo-sensors",
-        {
-          "motionPermission": "Allow TaskCare 360 to track your steps even when the app is closed."
-        }
-      ],
-      "expo-task-manager",
-      "expo-background-fetch",
       [
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": false,
+            "minSdkVersion": 26
           }
         }
       ],
+      "expo-task-manager",
+      "expo-background-fetch",
       "expo-font",
       "expo-image",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-pedometer",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0300a8",
+          "defaultChannel": "default"
+        }
+      ]
     ],
     "extra": {
       "eas": {
@@ -107,8 +90,8 @@
     },
     "updates": {
       "url": "https://u.expo.dev/f10f38af-0647-45b5-9870-484ef77bd853",
-       "checkAutomatically": "ON_LOAD",
-      "fallbackToCacheTimeout": 10000 
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 10000
     }
   }
 }
