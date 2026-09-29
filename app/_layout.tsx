@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react"; // ✅ useRef added
 import {
   AppState,
   Linking,
@@ -21,19 +21,17 @@ LogBox.ignoreLogs([
   "expo-notifications: Android Push notifications",
 ]);
 
-// ✅ Lazy load expo-notifications so it doesn't crash on import in Expo Go.
 const isExpoGo = Constants.appOwnership === "expo";
 
 let Notifications: any = null;
 if (!isExpoGo) {
-  // Only import when NOT in Expo Go (SDK 53+ removed push in Expo Go)
   try {
     Notifications = require("expo-notifications");
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: false, // ← set to false (uses system default)
+        shouldPlaySound: false,
         shouldSetBadge: false,
       }),
     });
@@ -45,6 +43,38 @@ if (!isExpoGo) {
 
 export default function Layout() {
   const router = useRouter();
+  const routerRef = useRef(router); // ✅ NEW
+  routerRef.current = router; // ✅ NEW
+
+  // ✅ NEW: Handle notification tap when app cold-starts
+  useEffect(() => {
+    if (!Notifications) return;
+
+    const handleInitialNotification = async () => {
+      try {
+        const response = await Notifications.getLastNotificationResponseAsync();
+        if (!response) return;
+
+        const screen = response.notification.request.content.data?.screen;
+        console.log("[layout] cold-start notification screen:", screen);
+
+        if (screen === "steps") {
+          setTimeout(() => {
+            routerRef.current.push("/steps");
+          }, 300);
+        }
+
+        // Prevent firing again on next launch
+        if (Notifications.clearLastNotificationResponseAsync) {
+          await Notifications.clearLastNotificationResponseAsync();
+        }
+      } catch (e) {
+        console.log("[layout] initial notification error:", e);
+      }
+    };
+
+    handleInitialNotification();
+  }, []);
 
   useEffect(() => {
     initStepTracker().catch((e) => console.log("[layout] init error", e));
@@ -68,8 +98,10 @@ export default function Layout() {
         notifSub = Notifications.addNotificationResponseReceivedListener(
           (response: any) => {
             const screen = response.notification.request.content.data?.screen;
+            console.log("[layout] notification tap screen:", screen); // ✅ NEW log
+
             if (screen === "steps") {
-              router.push("/steps");
+              routerRef.current.push("/steps"); // ✅ uses ref
             }
           },
         );

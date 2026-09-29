@@ -1,9 +1,12 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage"; // ✅ ADDED
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking, // ✅ ADDED
+  Platform, // ✅ ADDED
   StyleSheet,
   Text,
   TextInput,
@@ -11,6 +14,44 @@ import {
   View,
 } from "react-native";
 import { registerForPushNotifications } from "../utils/pushNotifications";
+
+// ✅ ADDED: Constant for tracking if the prompt was already shown
+const BATTERY_PROMPT_KEY = "@taskcare360_battery_prompt_shown";
+
+// ✅ ADDED: The battery optimization prompt function
+const maybeShowBatteryPrompt = async () => {
+  if (Platform.OS !== "android") return;
+
+  const alreadyShown = await AsyncStorage.getItem(BATTERY_PROMPT_KEY);
+  if (alreadyShown === "true") return;
+
+  setTimeout(() => {
+    Alert.alert(
+      "Enable Background Tracking",
+      "For the most accurate step tracking, please allow TaskCare 360 to run in the background:\n\n" +
+        "1. Tap 'Open Settings' below\n" +
+        "2. Find TaskCare 360\n" +
+        "3. Set Battery to 'Unrestricted'\n" +
+        "4. Enable 'Autostart' (if available)",
+      [
+        {
+          text: "Open Settings",
+          onPress: async () => {
+            await AsyncStorage.setItem(BATTERY_PROMPT_KEY, "true");
+            Linking.openSettings();
+          },
+        },
+        {
+          text: "Later",
+          style: "cancel",
+          onPress: async () => {
+            await AsyncStorage.setItem(BATTERY_PROMPT_KEY, "true");
+          },
+        },
+      ],
+    );
+  }, 800);
+};
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -67,6 +108,9 @@ export default function Login() {
 
         // ✅ 2. Register push in background (non-blocking)
         registerPushTokenInBackground();
+
+        // ✅ 3. Show battery optimization prompt (once per install)
+        maybeShowBatteryPrompt(); // ← ONLY NEW LINE
       } else {
         Alert.alert("Error", data.message || "Invalid email or password");
       }
