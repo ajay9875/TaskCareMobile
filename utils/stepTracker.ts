@@ -1,6 +1,7 @@
 // utils/stepTracker.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
+import * as BackgroundFetch from "expo-background-fetch"; // ✅ NEW
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import {
@@ -12,7 +13,6 @@ import {
   type StepCountTaskData,
 } from "expo-pedometer";
 import * as TaskManager from "expo-task-manager";
-import * as BackgroundFetch from "expo-background-fetch";      // ✅ NEW
 import {
   Alert,
   AppState,
@@ -34,7 +34,7 @@ const LAST_TIMESTAMP_KEY = "@taskcare360_last_sync_time";
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
 
 const STEP_COUNT_TASK = "taskcare360-step-count-task";
-const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";  // ✅ NEW
+const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch"; // ✅ NEW
 
 const SYNC_DEBOUNCE_MS = 2000;
 const FOREGROUND_POLL_MS = 3000;
@@ -52,7 +52,7 @@ let initialized = false;
 let foregroundPollTimer: any = null;
 let isCheckingNotificationPermission = false;
 let backgroundTaskRegistered = false;
-let backgroundFetchRegistered = false;   // ✅ NEW
+let backgroundFetchRegistered = false; // ✅ NEW
 
 // ─── Types ───────────────────────────────────────────────────
 export type StepEvent = {
@@ -162,7 +162,11 @@ export const flushQueue = async () => {
         if (res.ok) continue;
 
         if (res.status === 401) {
-          remaining.push(evt, ...batch.slice(i + 1), ...queue.slice(MAX_BATCH_SIZE));
+          remaining.push(
+            evt,
+            ...batch.slice(i + 1),
+            ...queue.slice(MAX_BATCH_SIZE),
+          );
           break;
         }
 
@@ -171,10 +175,18 @@ export const flushQueue = async () => {
           continue;
         }
 
-        remaining.push(evt, ...batch.slice(i + 1), ...queue.slice(MAX_BATCH_SIZE));
+        remaining.push(
+          evt,
+          ...batch.slice(i + 1),
+          ...queue.slice(MAX_BATCH_SIZE),
+        );
         break;
       } catch (err) {
-        remaining.push(evt, ...batch.slice(i + 1), ...queue.slice(MAX_BATCH_SIZE));
+        remaining.push(
+          evt,
+          ...batch.slice(i + 1),
+          ...queue.slice(MAX_BATCH_SIZE),
+        );
         break;
       }
     }
@@ -275,7 +287,9 @@ export const recoverMissedSteps = async () => {
   });
 
   try {
-    const userTargetRaw = await AsyncStorage.getItem("@taskcare360_cached_target");
+    const userTargetRaw = await AsyncStorage.getItem(
+      "@taskcare360_cached_target",
+    );
     const userTarget = userTargetRaw ? parseInt(userTargetRaw, 10) : 5000;
     const currentTotal = result.current;
     await checkMilestones(currentTotal, userTarget, mode === "treadmill");
@@ -408,9 +422,9 @@ const ensureBackgroundFetch = async () => {
     );
     if (!alreadyRegistered) {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
-        minimumInterval: 60 * 60,   // 15 minutes (Android minimum)
-        stopOnTerminate: false,     // keep running after app is killed
-        startOnBoot: true,          // start after phone reboot
+        minimumInterval: 20 * 60, // 15 minutes (Android minimum)
+        stopOnTerminate: false, // keep running after app is killed
+        startOnBoot: true, // start after phone reboot
       });
       console.log("[stepTracker] ✅ background-fetch registered");
     } else {
@@ -473,12 +487,16 @@ const ensureBackgroundStepTracking = async () => {
 
   try {
     const bgAvailable = await isBackgroundAvailableAsync();
-    console.log("[stepTracker] Background step updates available:", bgAvailable);
+    console.log(
+      "[stepTracker] Background step updates available:",
+      bgAvailable,
+    );
     if (!bgAvailable) return;
 
     await requestBackgroundPermissionsAsync();
 
-    const alreadyRegistered = await TaskManager.isTaskRegisteredAsync(STEP_COUNT_TASK);
+    const alreadyRegistered =
+      await TaskManager.isTaskRegisteredAsync(STEP_COUNT_TASK);
     if (!alreadyRegistered) {
       await startStepCountUpdatesAsync(STEP_COUNT_TASK);
       console.log("[stepTracker] ✅ Background step task started");
@@ -518,7 +536,7 @@ export const initStepTracker = async () => {
   attachAppStateListener();
 
   await ensureBackgroundStepTracking();
-  await ensureBackgroundFetch();         // ✅ NEW
+  await ensureBackgroundFetch(); // ✅ NEW
 
   await recoverMissedSteps();
   await flushQueue();

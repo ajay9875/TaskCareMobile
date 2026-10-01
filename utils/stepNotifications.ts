@@ -1,19 +1,19 @@
 // utils/stepNotifications.ts
-import * as Notifications from 'expo-notifications';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Notifications from "expo-notifications";
+import { Platform } from "react-native";
 
-const HALF_GOAL_NOTIFIED_KEY = '@taskcare360_half_goal_notified';
-const FULL_GOAL_NOTIFIED_KEY = '@taskcare360_full_goal_notified';
-const NOTIFIED_DATE_KEY = '@taskcare360_notified_date';
-const PERIODIC_ID_KEY = '@taskcare360_periodic_notif_id';
+const HALF_GOAL_NOTIFIED_KEY = "@taskcare360_half_goal_notified";
+const FULL_GOAL_NOTIFIED_KEY = "@taskcare360_full_goal_notified";
+const NOTIFIED_DATE_KEY = "@taskcare360_notified_date";
+const PERIODIC_ID_KEY = "@taskcare360_periodic_notif_id";
 
 //const PERIODIC_INTERVAL_SECONDS = 2 * 60 * 60; // 2 hours
 const PERIODIC_INTERVAL_SECONDS = 60; // 1 minute — TEMPORARY
 
 // Quiet hours: no notifications between 00:00 and 06:00 (local time)
-const QUIET_HOUR_START = 0;   // 12 AM
-const QUIET_HOUR_END = 6;     // 6 AM
+const QUIET_HOUR_START = 0; // 12 AM
+const QUIET_HOUR_END = 6; // 6 AM
 
 // ─── Configure how notifications appear when the app is foregrounded ───
 Notifications.setNotificationHandler({
@@ -30,8 +30,8 @@ Notifications.setNotificationHandler({
 const getTodayKey = (): string => {
   const d = new Date();
   const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 };
 
@@ -59,15 +59,15 @@ const nextAllowedTime = (): Date => {
 const pickMessage = (
   current: number,
   target: number,
-  isTreadmill: boolean
+  isTreadmill: boolean,
 ): { title: string; body: string } => {
   const remaining = Math.max(0, target - current);
   const percent = target > 0 ? Math.round((current / target) * 100) : 0;
-  const mode = isTreadmill ? 'Treadmill' : 'Walking';
+  const mode = isTreadmill ? "Treadmill" : "Walking";
 
   if (current === 0) {
     return {
-      title: '🚶 Start moving!',
+      title: "🚶 Start moving!",
       body: `${mode} mode: 0 / ${target.toLocaleString()} steps. Every step counts.`,
     };
   }
@@ -96,17 +96,17 @@ const pickMessage = (
     };
   }
   return {
-    title: '🎉 Goal smashed!',
+    title: "🎉 Goal smashed!",
     body: `You hit ${target.toLocaleString()} steps today. Amazing work!`,
   };
 };
 
-if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('default', {
-    name: 'TaskCare 360',
+if (Platform.OS === "android") {
+  Notifications.setNotificationChannelAsync("default", {
+    name: "TaskCare 360",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
-    sound: 'default',
+    sound: "default",
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     bypassDnd: false,
     enableVibrate: true,
@@ -118,7 +118,7 @@ if (Platform.OS === 'android') {
 export const sendProgressNotification = async (
   current: number,
   target: number,
-  isTreadmill: boolean
+  isTreadmill: boolean,
 ) => {
   try {
     const { title, body } = pickMessage(current, target, isTreadmill);
@@ -126,7 +126,7 @@ export const sendProgressNotification = async (
     if (isQuietHour()) {
       // Defer to 6 AM
       await Notifications.scheduleNotificationAsync({
-        content: { title, body, sound: true, data: { screen: 'steps' } },
+        content: { title, body, sound: true, data: { screen: "steps" } },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
           date: nextAllowedTime(),
@@ -136,11 +136,11 @@ export const sendProgressNotification = async (
     }
 
     await Notifications.scheduleNotificationAsync({
-      content: { title, body, sound: true, data: { screen: 'steps' } },
+      content: { title, body, sound: true, data: { screen: "steps" } },
       trigger: null, // immediate
     });
   } catch (e) {
-    console.log('[stepNotifications] sendProgressNotification error:', e);
+    console.log("[stepNotifications] sendProgressNotification error:", e);
   }
 };
 
@@ -148,7 +148,7 @@ export const sendProgressNotification = async (
 export const checkMilestones = async (
   current: number,
   target: number,
-  isTreadmill: boolean
+  isTreadmill: boolean,
 ) => {
   try {
     const todayKey = getTodayKey();
@@ -162,14 +162,14 @@ export const checkMilestones = async (
     const percent = target > 0 ? (current / target) * 100 : 0;
 
     const halfNotified =
-      (await AsyncStorage.getItem(HALF_GOAL_NOTIFIED_KEY)) === 'true';
+      (await AsyncStorage.getItem(HALF_GOAL_NOTIFIED_KEY)) === "true";
     const fullNotified =
-      (await AsyncStorage.getItem(FULL_GOAL_NOTIFIED_KEY)) === 'true';
+      (await AsyncStorage.getItem(FULL_GOAL_NOTIFIED_KEY)) === "true";
 
     const schedule = async (title: string, body: string) => {
       if (isQuietHour()) {
         await Notifications.scheduleNotificationAsync({
-          content: { title, body, sound: true, data: { screen: 'steps' } },
+          content: { title, body, sound: true, data: { screen: "steps" } },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
             date: nextAllowedTime(),
@@ -177,30 +177,30 @@ export const checkMilestones = async (
         });
       } else {
         await Notifications.scheduleNotificationAsync({
-          content: { title, body, sound: true, data: { screen: 'steps' } },
+          content: { title, body, sound: true, data: { screen: "steps" } },
           trigger: null,
         });
       }
     };
 
     if (percent >= 50 && !halfNotified) {
-      await AsyncStorage.setItem(HALF_GOAL_NOTIFIED_KEY, 'true');
+      await AsyncStorage.setItem(HALF_GOAL_NOTIFIED_KEY, "true");
       const remaining = Math.max(0, target - current);
       await schedule(
-        '🏃 Halfway there!',
-        `${current.toLocaleString()} / ${target.toLocaleString()} steps. Only ${remaining.toLocaleString()} left — finish strong!`
+        "🏃 Halfway there!",
+        `${current.toLocaleString()} / ${target.toLocaleString()} steps. Only ${remaining.toLocaleString()} left — finish strong!`,
       );
     }
 
     if (percent >= 100 && !fullNotified) {
-      await AsyncStorage.setItem(FULL_GOAL_NOTIFIED_KEY, 'true');
+      await AsyncStorage.setItem(FULL_GOAL_NOTIFIED_KEY, "true");
       await schedule(
-        '🎉 Daily goal complete!',
-        `${current.toLocaleString()} steps today. You crushed your ${target.toLocaleString()} step goal!`
+        "🎉 Daily goal complete!",
+        `${current.toLocaleString()} steps today. You crushed your ${target.toLocaleString()} step goal!`,
       );
     }
   } catch (e) {
-    console.log('[stepNotifications] checkMilestones error:', e);
+    console.log("[stepNotifications] checkMilestones error:", e);
   }
 };
 
@@ -228,9 +228,9 @@ export const schedulePeriodicReminder = async () => {
     for (const hour of hours) {
       const id = await Notifications.scheduleNotificationAsync({
         content: {
-          title: '🚶 Quick step check',
-          body: 'Open TaskCare 360 to see where you stand today.',
-          data: { screen: 'steps' },
+          title: "🚶 Quick step check",
+          body: "Open TaskCare 360 to see where you stand today.",
+          data: { screen: "steps" },
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -243,11 +243,11 @@ export const schedulePeriodicReminder = async () => {
 
     await AsyncStorage.setItem(PERIODIC_ID_KEY, JSON.stringify(scheduledIds));
     console.log(
-      '[stepNotifications] Periodic reminders scheduled at:',
-      hours.join(', ')
+      "[stepNotifications] Periodic reminders scheduled at:",
+      hours.join(", "),
     );
   } catch (e) {
-    console.log('[stepNotifications] schedulePeriodicReminder error:', e);
+    console.log("[stepNotifications] schedulePeriodicReminder error:", e);
   }
 };
 
@@ -263,6 +263,6 @@ export const cancelPeriodicReminder = async () => {
       await AsyncStorage.removeItem(PERIODIC_ID_KEY);
     }
   } catch (e) {
-    console.log('[stepNotifications] cancelPeriodicReminder error:', e);
+    console.log("[stepNotifications] cancelPeriodicReminder error:", e);
   }
 };

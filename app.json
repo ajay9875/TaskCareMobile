@@ -29,7 +29,7 @@
         "android.permission.ACTIVITY_RECOGNITION"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#4e5cdb",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "intentFilters": [
