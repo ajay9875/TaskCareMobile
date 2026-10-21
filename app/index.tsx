@@ -1,11 +1,7 @@
-import NetInfo from "@react-native-community/netinfo"; // ✅ Import NetInfo
-import * as Clipboard from "expo-clipboard";
-import * as LinkingExpo from "expo-linking";
-import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
-import { stopStepTracker } from "../utils/stepTracker";
-
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as Clipboard from "expo-clipboard";
+import { useFocusEffect, useRouter } from "expo-router"; // ✅ Import useFocusEffect
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,78 +13,63 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { stopStepTracker } from "../utils/stepTracker";
 
 export default function LandingScreen() {
   const router = useRouter();
-  const url = LinkingExpo.useURL();
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [user, setUser] = useState(null);
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [user, setUser] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [hasNetError, setHasNetError] = useState(false);
 
-  // ✅ Network state
-  const [isConnected, setIsConnected] = useState<boolean | null>(true);
+  // ✅ Same mechanism as steps.tsx
+  const checkSession = useCallback(async () => {
+    setLoading(true);
+    setHasNetError(false); // Reset error state on new check
 
-  // Check login state on component mount
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/dashboard`, {
-          credentials: "include",
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === "success") {
-            setIsLoggedIn(true);
-            setUser(data.username || "User");
-          }
-        }
-      } catch (error) {
-        // Not logged in or backend network unreachable
-      } finally {
-        setCheckingAuth(false);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+    try {
+      const response = await fetch(`${API_BASE}/dashboard`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (response.status === 401) {
+        setIsLoggedIn(false);
+        setUser(null);
+        return;
       }
-    };
-    checkSession();
-  }, []);
 
-  // ✅ Listen for network changes
-  useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsConnected(state.isConnected && state.isInternetReachable !== false);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  const handleRetryConnection = async () => {
-    const state = await NetInfo.fetch();
-    if (state.isConnected && state.isInternetReachable !== false) {
-      setIsConnected(true);
-      setCheckingAuth(true);
-      try {
-        const response = await fetch(`${API_BASE}/dashboard`, {
-          credentials: "include",
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data.status === "success") {
-            setIsLoggedIn(true);
-            setUser(data.username || "User");
-          }
-        }
-      } catch (e) {
-        // Ignore
-      } finally {
-        setCheckingAuth(false);
+      if (!response.ok) {
+        throw new Error(`Server status: ${response.status}`);
       }
-    } else {
-      Alert.alert(
-        "Still Offline",
-        "Please check your internet connection and try again.",
-      );
+
+      const data = await response.json();
+      if (data.status === "success") {
+        setIsLoggedIn(true);
+        setUser(data.username || "User");
+      }
+    } catch (e) {
+      console.log("Session check failed due to network:", e);
+      setHasNetError(true);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, [API_BASE]);
+
+  // ✅ Use useFocusEffect instead of useEffect
+  // This runs EVERY TIME the user opens this screen (Home tab)
+  useFocusEffect(
+    useCallback(() => {
+      checkSession();
+    }, [checkSession]),
+  );
 
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to sign out?", [
@@ -101,7 +82,6 @@ export default function LandingScreen() {
             await stopStepTracker();
             await fetch(`${API_BASE}/logout`, { credentials: "include" });
           } catch (e) {
-            // Silently continue
           } finally {
             setIsLoggedIn(false);
             setUser(null);
@@ -113,9 +93,7 @@ export default function LandingScreen() {
 
   const openSupportEmail = async () => {
     const email = "taskcare360@gmail.com";
-    const subject = "Support Request - TaskCare360";
-    const body = "Hello Support Team,";
-    const mailUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    const mailUrl = `mailto:${email}?subject=${encodeURIComponent("Support Request")}&body=${encodeURIComponent("Hello Support Team,")}`;
     try {
       await Linking.openURL(mailUrl);
     } catch (error) {
@@ -136,8 +114,22 @@ export default function LandingScreen() {
     }
   };
 
-  // ✅ Show Network Error Block if offline
-  if (isConnected === false) {
+  // ✅ 1. Loading Spinner
+  if (loading) {
+    return (
+      <View
+        style={[
+          styles.container,
+          { backgroundColor: "#1a1a2e", justifyContent: "center" },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#4ecca3" />
+      </View>
+    );
+  }
+
+  // ✅ 2. Network Error Block
+  if (hasNetError) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: "#1a1a2e" }}>
         <View style={styles.errorContainer}>
@@ -147,15 +139,13 @@ export default function LandingScreen() {
             color="#ff6b35"
             style={{ marginBottom: 20 }}
           />
-          <Text style={styles.errorTitle}>No Internet Connection</Text>
+          <Text style={styles.errorTitle}>Sync Connection Error</Text>
           <Text style={styles.errorSubtext}>
-            TaskCare360 requires an active internet connection to load your
-            tasks and fitness data. Please check your Wi-Fi or mobile data.
+            Could not load the data. The server may be busy, offline, or taking
+            too long to respond. Please check your internet connection or
+            restart the app.
           </Text>
-          <TouchableOpacity
-            style={styles.retryBtn}
-            onPress={handleRetryConnection}
-          >
+          <TouchableOpacity style={styles.retryBtn} onPress={checkSession}>
             <MaterialCommunityIcons name="refresh" size={20} color="#1a1a2e" />
             <Text style={styles.retryBtnText}>Retry Connection</Text>
           </TouchableOpacity>
@@ -164,10 +154,10 @@ export default function LandingScreen() {
     );
   }
 
+  // ✅ 3. Main UI
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* BRAND LOGO SECTION */}
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.heroSection}>
           <View style={styles.logoContainer}>
             <Ionicons name="checkmark-done-circle" size={100} color="#0300a8" />
@@ -175,8 +165,7 @@ export default function LandingScreen() {
           <Text style={styles.header}>TaskCare360</Text>
         </View>
 
-        {/* LOGGED-IN STATUS BANNER */}
-        {!checkingAuth && isLoggedIn && (
+        {isLoggedIn && (
           <View style={styles.loggedInBanner}>
             <Ionicons name="person-circle" size={24} color="#2e7d32" />
             <Text style={styles.loggedInText}>
@@ -190,7 +179,6 @@ export default function LandingScreen() {
           and manage your priorities seamlessly all in one place.
         </Text>
 
-        {/* FITNESS SECTION */}
         <View style={styles.featureBox}>
           <Text style={styles.featureTitle}>🏃‍♂️ About Fitness Tracker</Text>
           <Text style={styles.featureItem}>
@@ -225,7 +213,6 @@ export default function LandingScreen() {
           </Text>
         </View>
 
-        {/* TASK MANAGEMENT SECTION */}
         <View style={styles.featureBox}>
           <Text style={styles.featureTitle}>📋 About Task Manager</Text>
           <Text style={styles.featureItem}>
@@ -238,33 +225,10 @@ export default function LandingScreen() {
             🔄 Secure Cloud Backups – Never lose your data layout updates.
           </Text>
         </View>
-
-        <View style={styles.stepsOutsideBox}>
-          <Text style={styles.stepsTitle}>How to manage your Tasks:</Text>
-          <Text style={styles.stepsItem}>
-            1. Tap "Get Started" or log into your account dashboard profile.
-          </Text>
-          <Text style={styles.stepsItem}>
-            2. Click on "+Add to TaskCare" button to insert new tasks after
-            providing title & description
-          </Text>
-          <Text style={styles.stepsItem}>
-            3. After adding tasks, check them off as completed, edit via pencil
-            icon, or delete via trash icon.
-          </Text>
-          <Text style={styles.stepsItem}>
-            4. Tap logout icon to sign out of your account at the top right of
-            the screen.
-          </Text>
-        </View>
       </ScrollView>
 
-      {/* BUTTON GROUP */}
       <View style={styles.buttonContainer}>
-        {checkingAuth ? (
-          <ActivityIndicator size="small" color="#0300a8" />
-        ) : isLoggedIn ? (
-          /* LOGGED IN BUTTON LAYOUT */
+        {isLoggedIn ? (
           <View style={styles.loggedInGroup}>
             <TouchableOpacity
               style={styles.dashboardBtn}
@@ -273,14 +237,12 @@ export default function LandingScreen() {
               <Ionicons name="speedometer-outline" size={20} color="#fff" />
               <Text style={styles.btnText}>Go to Dashboard</Text>
             </TouchableOpacity>
-
             <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
               <MaterialCommunityIcons name="logout" size={20} color="#fff" />
               <Text style={styles.btnText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          /* GUEST USER BUTTON LAYOUT (2 Buttons In Single Row + 1 Full Width) */
           <View style={styles.guestGroup}>
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -290,7 +252,6 @@ export default function LandingScreen() {
                 <Ionicons name="person-add-outline" size={18} color="#fff" />
                 <Text style={styles.btnText}>Get Started</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.btn, styles.loginBtn]}
                 onPress={() => router.push("/login")}
@@ -299,7 +260,6 @@ export default function LandingScreen() {
                 <Text style={styles.btnText}>Login</Text>
               </TouchableOpacity>
             </View>
-
             <TouchableOpacity
               style={styles.forgotBtn}
               onPress={() => router.push("/forgot-password")}
@@ -322,7 +282,8 @@ export default function LandingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, alignItems: "center" },
+  container: { flex: 1, paddingHorizontal: 15 },
+  scrollContainer: { padding: 20, alignItems: "center" },
   heroSection: { alignItems: "center", marginTop: 20, marginBottom: 10 },
   logoContainer: { marginBottom: 10 },
   header: {
@@ -436,7 +397,6 @@ const styles = StyleSheet.create({
     textDecorationLine: "underline",
     textAlign: "center",
   },
-  // ✅ NEW STYLES FOR OFFLINE SCREEN
   errorContainer: {
     flex: 1,
     justifyContent: "center",
@@ -466,9 +426,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
   },
-  retryBtnText: {
-    color: "#1a1a2e",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
+  retryBtnText: { color: "#1a1a2e", fontWeight: "bold", fontSize: 15 },
 });
