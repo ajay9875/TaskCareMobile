@@ -9,7 +9,7 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
     Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
-        duration: 1500,
+        duration: 1000, // Slightly faster spin for a better loading feel
         useNativeDriver: true,
       }),
     ).start();
@@ -28,22 +28,20 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
 
   return (
     <View style={styles.container}>
-      {/* Spinning Border tightly wrapping the logo */}
-      <Animated.View
-        style={[styles.spinnerBorder, { transform: [{ rotate: spin }] }]}
+      {/* App Logo on Top */}
+      <Image
+        source={require("../assets/images/icon.png")}
+        style={styles.logo}
+        resizeMode="contain"
       />
 
-      {/* App Logo inside the spinner */}
-      <View style={styles.logoContainer}>
-        <Image
-          source={require("../assets/images/icon.png")}
-          style={styles.logo}
-          resizeMode="contain"
+      {/* Spinner and Loading Text Inline Below */}
+      <View style={styles.loadingRow}>
+        <Animated.View
+          style={[styles.spinner, { transform: [{ rotate: spin }] }]}
         />
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
-
-      {/* Loading Text */}
-      <Text style={styles.loadingText}>Loading...</Text>
     </View>
   );
 }
@@ -55,33 +53,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  spinnerBorder: {
-    width: 120, // ✅ Match the logo container size + a little padding
-    height: 120,
-    borderRadius: 60,
-    borderWidth: 5, // ✅ Thicker border
-    borderColor: "#4ecca3",
-    borderTopColor: "transparent",
-    position: "absolute",
-  },
-  logoContainer: {
-    width: 100, // ✅ Slightly smaller than the border
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#ffffff",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
   logo: {
-    width: 90, 
-    height: 90,
+    width: 120,
+    height: 120,
+    marginBottom: 20, // Space between logo and the spinner row
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12, // Space between the spinner and the text
+  },
+  spinner: {
+    width: 24, // Smaller, standard spinner size
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 3, // Thinner border for the small spinner
+    borderColor: "#4ecca3", // Your theme green
+    borderTopColor: "transparent",
   },
   loadingText: {
-    marginTop: 30,
     fontSize: 16,
     fontWeight: "600",
     color: "#333",
-    letterSpacing: 1,
+    letterSpacing: 0.5,
   },
 });
