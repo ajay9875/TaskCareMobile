@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TaskCare 360",
+    "name": "TaskCare360",
     "slug": "TaskCareMobile",
     "version": "1.2.1",
     "orientation": "portrait",
@@ -58,6 +58,14 @@
       "./plugins/withJdkHome",
       "expo-router",
       [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/images/icon.png",
+          "resizeMode": "contain"
+        }
+      ],
+      [
         "expo-build-properties",
         {
           "android": {
@@ -71,7 +79,15 @@
       "expo-font",
       "expo-image",
       "expo-web-browser",
-      "expo-pedometer",
+      [
+        "expo-pedometer",
+        {
+          "iosHealthKitPermission": "Allow TaskCare 360 to read your step count to keep your daily progress updated.",
+          "iosHealthKitBackgroundDelivery": true,
+          "androidHealthConnectPrivacyPolicyUrl": "https://taskcare360.pythonanywhere.com/privacy",
+          "androidHealthConnectBackgroundRead": true
+        }
+      ],
       [
         "expo-notifications",
         {

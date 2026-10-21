@@ -1,0 +1,11 @@
+# Ignore these folders to speed up uploads
+
+node_modules/
+.expo/
+dist/
+ios/
+android/
+
+# DO NOT ignore google-services.json (so EAS can upload it)
+
+!google-services.json

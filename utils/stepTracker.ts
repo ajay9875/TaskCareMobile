@@ -1,14 +1,17 @@
 // utils/stepTracker.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import * as BackgroundFetch from "expo-background-fetch"; // ✅ NEW
+import * as BackgroundFetch from "expo-background-fetch";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import {
+  PermissionStatus, // ✅ Add this
+  getPermissionsAsync,
   getTodayStepCountAsync,
   isAvailableAsync,
   isBackgroundAvailableAsync,
   requestBackgroundPermissionsAsync,
+  requestPermissionsAsync,
   startStepCountUpdatesAsync,
   type StepCountTaskData,
 } from "expo-pedometer";
@@ -20,7 +23,6 @@ import {
   Linking,
   Platform,
 } from "react-native";
-import { checkMilestones, schedulePeriodicReminder } from "./stepNotifications";
 
 // ─── Constants ───────────────────────────────────────────────
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -34,7 +36,7 @@ const LAST_TIMESTAMP_KEY = "@taskcare360_last_sync_time";
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
 
 const STEP_COUNT_TASK = "taskcare360-step-count-task";
-const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch"; // ✅ NEW
+const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
 const FOREGROUND_POLL_MS = 3000;
@@ -44,6 +46,7 @@ const RETRY_INTERVAL_MS = 30000;
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
+let isRecovering = false; // ✅ NEW: Prevents step doubling from race conditions
 let debounceTimer: any = null;
 let retryTimer: any = null;
 let netListenerAttached = false;
@@ -52,7 +55,7 @@ let initialized = false;
 let foregroundPollTimer: any = null;
 let isCheckingNotificationPermission = false;
 let backgroundTaskRegistered = false;
-let backgroundFetchRegistered = false; // ✅ NEW
+let backgroundFetchRegistered = false;
 
 // ─── Types ───────────────────────────────────────────────────
 export type StepEvent = {
@@ -103,11 +106,26 @@ export const readActiveMode = async (): Promise<"walking" | "treadmill"> => {
 };
 
 // ─── Enqueue steps ───────────────────────────────────────────
+// ✅ 1. Add this variable at the top of stepTracker.ts
+let lastEnqueuedDelta = 0;
+let lastEnqueuedTime = 0;
+
+// ✅ 2. Update enqueueSteps to prevent double-queueing
 export const enqueueSteps = async (
   delta: number,
   mode: "walking" | "treadmill",
 ) => {
   if (!delta || delta <= 0) return;
+
+  // Prevent duplicate enqueueing within 2 seconds
+  const now = Date.now();
+  if (delta === lastEnqueuedDelta && now - lastEnqueuedTime < 2000) {
+    console.log(`[stepTracker] Blocked duplicate enqueue of ${delta} steps`);
+    return;
+  }
+  lastEnqueuedDelta = delta;
+  lastEnqueuedTime = now;
+
   const queue = await readQueue();
   queue.push({
     event_id: makeEventId(),
@@ -210,14 +228,12 @@ const startRetryTimer = () => {
   retryTimer = setInterval(() => {
     flushQueue().catch(() => {});
   }, RETRY_INTERVAL_MS);
-  console.log("[stepTracker] retry timer started");
 };
 
 const stopRetryTimer = () => {
   if (retryTimer) {
     clearInterval(retryTimer);
     retryTimer = null;
-    console.log("[stepTracker] retry timer stopped");
   }
 };
 
@@ -258,10 +274,6 @@ const readPedometerDelta = async (): Promise<{
     const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
     const delta = todaySteps - lastSynced;
 
-    console.log(
-      `[stepTracker] Day ${todayKey} | LastSynced=${lastSynced} | Today=${todaySteps} | Delta=${delta}`,
-    );
-
     if (delta > 0) {
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
     }
@@ -274,30 +286,40 @@ const readPedometerDelta = async (): Promise<{
 };
 
 // ─── Recover missed steps ────────────────────────────────────
+// ✅ 3. Update recoverMissedSteps to update Last Synced Count BEFORE enqueueing
 export const recoverMissedSteps = async () => {
-  const result = await readPedometerDelta();
-  if (!result || result.delta <= 0) return;
-
-  const mode = await readActiveMode();
-  await enqueueSteps(result.delta, mode);
-
-  DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
-    delta: result.delta,
-    mode,
-  });
+  if (isRecovering) return;
+  isRecovering = true;
 
   try {
-    const userTargetRaw = await AsyncStorage.getItem(
-      "@taskcare360_cached_target",
-    );
-    const userTarget = userTargetRaw ? parseInt(userTargetRaw, 10) : 5000;
-    const currentTotal = result.current;
-    await checkMilestones(currentTotal, userTarget, mode === "treadmill");
-  } catch (e) {
-    console.log("[stepTracker] milestone check error:", e);
-  }
+    const result = await readPedometerDelta();
+    if (!result || result.delta <= 0) return;
 
-  scheduleFlush();
+    // Note: readPedometerDelta already updates LAST_SYNCED_COUNT_KEY
+    // But we need to make sure the lock prevents this from running twice.
+
+    const mode = await readActiveMode();
+    await enqueueSteps(result.delta, mode);
+
+    DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
+      delta: result.delta,
+      mode,
+    });
+
+    try {
+      const userTargetRaw = await AsyncStorage.getItem(
+        "@taskcare360_cached_target",
+      );
+      const userTarget = userTargetRaw ? parseInt(userTargetRaw, 10) : 5000;
+      //await checkMilestones(result.current, userTarget, mode === "treadmill");
+    } catch (e) {
+      console.log("[stepTracker] milestone check error:", e);
+    }
+
+    scheduleFlush();
+  } finally {
+    isRecovering = false;
+  }
 };
 
 // ─── Notification permission ─────────────────────────────────
@@ -380,30 +402,26 @@ try {
       }
     },
   );
-  console.log("[stepTracker] defineTask registered");
 } catch (e) {
   console.log("[stepTracker] defineTask failed:", e);
 }
 
-// ─── ✅ NEW: Background fetch task (wakes app every 15 min) ──
+// ─── Background fetch task ───────────────────────────────────
 try {
   TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
     try {
-      console.log("[stepTracker] background-fetch fired");
       await recoverMissedSteps();
       await flushQueue();
       return BackgroundFetch.BackgroundFetchResult.NewData;
     } catch (e) {
-      console.log("[stepTracker] background-fetch error:", e);
       return BackgroundFetch.BackgroundFetchResult.Failed;
     }
   });
-  console.log("[stepTracker] background-fetch task defined");
 } catch (e) {
   console.log("[stepTracker] background-fetch defineTask failed:", e);
 }
 
-// ─── ✅ NEW: Register the background-fetch task ──────────────
+// ─── Register background fetch task ─────────────────────────
 const ensureBackgroundFetch = async () => {
   if (backgroundFetchRegistered) return;
 
@@ -413,7 +431,6 @@ const ensureBackgroundFetch = async () => {
       status === BackgroundFetch.BackgroundFetchStatus.Restricted ||
       status === BackgroundFetch.BackgroundFetchStatus.Denied
     ) {
-      console.log("[stepTracker] background-fetch not available:", status);
       return;
     }
 
@@ -422,13 +439,10 @@ const ensureBackgroundFetch = async () => {
     );
     if (!alreadyRegistered) {
       await BackgroundFetch.registerTaskAsync(BACKGROUND_FETCH_TASK, {
-        minimumInterval: 20 * 60, // 15 minutes (Android minimum)
-        stopOnTerminate: false, // keep running after app is killed
-        startOnBoot: true, // start after phone reboot
+        minimumInterval: 20 * 60,
+        stopOnTerminate: false,
+        startOnBoot: true,
       });
-      console.log("[stepTracker] ✅ background-fetch registered");
-    } else {
-      console.log("[stepTracker] background-fetch already registered");
     }
     backgroundFetchRegistered = true;
   } catch (e) {
@@ -475,33 +489,33 @@ const attachAppStateListener = () => {
       startForegroundPoll();
     } else if (next === "background" || next === "inactive") {
       stopForegroundPoll();
-      await recoverMissedSteps().catch(() => {});
+      //await recoverMissedSteps().catch(() => {});
       await flushQueue().catch(() => {});
     }
   });
 };
 
-// ─── Background step tracking (pedometer) ────────────────────
+// 2. Update this function to include the physical activity check
 const ensureBackgroundStepTracking = async () => {
   if (backgroundTaskRegistered) return;
 
   try {
     const bgAvailable = await isBackgroundAvailableAsync();
-    console.log(
-      "[stepTracker] Background step updates available:",
-      bgAvailable,
-    );
     if (!bgAvailable) return;
 
+    // ✅ Request Background Health Connect Permission
     await requestBackgroundPermissionsAsync();
+
+    // ✅ Request Foreground Physical Activity Permission (if not already granted)
+    const existing = await getPermissionsAsync();
+    if (existing.status !== PermissionStatus.GRANTED) {
+      await requestPermissionsAsync();
+    }
 
     const alreadyRegistered =
       await TaskManager.isTaskRegisteredAsync(STEP_COUNT_TASK);
     if (!alreadyRegistered) {
       await startStepCountUpdatesAsync(STEP_COUNT_TASK);
-      console.log("[stepTracker] ✅ Background step task started");
-    } else {
-      console.log("[stepTracker] Background step task already running");
     }
     backgroundTaskRegistered = true;
   } catch (e) {
@@ -509,45 +523,35 @@ const ensureBackgroundStepTracking = async () => {
   }
 };
 
-// ─── Public init ─────────────────────────────────────────────
+// 3. Update initStepTracker to include notification permission
 export const initStepTracker = async () => {
   if (initialized) return;
   initialized = true;
 
   if (!Device.isDevice) {
-    console.log("[stepTracker] skipped: not a physical device");
     return;
   }
 
+  // ✅ Request Notification Permission First
   await handleNotificationPermission();
-
-  try {
-    const available = await isAvailableAsync();
-    console.log("[DEBUG] Pedometer available:", available);
-    if (available) {
-      const nowSteps = await getTodayStepCountAsync();
-      console.log("[DEBUG] getTodayStepCountAsync right now:", nowSteps);
-    }
-  } catch (e) {
-    console.log("[DEBUG] Availability probe failed:", e);
-  }
 
   attachNetworkListener();
   attachAppStateListener();
 
+  // ✅ This now triggers BOTH Physical Activity and Health Connect prompts
   await ensureBackgroundStepTracking();
-  await ensureBackgroundFetch(); // ✅ NEW
+
+  await ensureBackgroundFetch();
 
   await recoverMissedSteps();
   await flushQueue();
 
   startForegroundPoll();
+};
 
-  try {
-    await schedulePeriodicReminder();
-  } catch (e) {
-    console.log("[stepTracker] schedulePeriodicReminder failed:", e);
-  }
+// ✅ ADD THIS NEW EXPORT at the bottom of the file
+export const requestNotificationPermission = async () => {
+  await handleNotificationPermission();
 };
 
 // ─── Logout hook ─────────────────────────────────────────────

@@ -1,3 +1,4 @@
+// app/steps.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -27,7 +28,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
-const BATTERY_PROMPT_KEY = "@taskcare360_battery_prompt_shown"; // ✅ ADDED
+const BATTERY_PROMPT_KEY = "@taskcare360_battery_prompt_shown";
 
 export default function StepsScreen() {
   const [walkingSteps, setWalkingSteps] = useState(0);
@@ -46,7 +47,6 @@ export default function StepsScreen() {
   const isCheckingPermissions = useRef(false);
   const router = useRouter();
 
-  // Helper function to handle session expiration - just redirect
   const handleSessionExpired = useCallback(() => {
     router.replace("/login?sessionExpired=true");
   }, [router]);
@@ -81,7 +81,6 @@ export default function StepsScreen() {
         const updated = await getPermissionsAsync();
         if (!updated.canAskAgain) {
           isCheckingPermissions.current = false;
-          // Fall through to the alert below
         }
       }
 
@@ -125,7 +124,6 @@ export default function StepsScreen() {
     }
   };
 
-  // ✅ NEW: Show battery optimization prompt (once per install)
   const maybeShowBatteryPrompt = async () => {
     if (Platform.OS !== "android") return;
 
@@ -160,6 +158,7 @@ export default function StepsScreen() {
     }, 800);
   };
 
+  // ✅ SMART SYNC LOGIC: Combines Backend + Offline Queue
   const fetchCloudMetrics = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -170,9 +169,10 @@ export default function StepsScreen() {
       setIsTreadmillMode(isTreadmill);
       treadmillModeRef.current = isTreadmill;
 
-      // Read pending queue from the new tracker instead of the old buffer
+      // 1. Read unsynced offline steps from local queue
       const { getPendingQueue } = require("../utils/stepTracker");
       const pendingEvents = await getPendingQueue();
+
       const localBufferWalking = pendingEvents
         .filter((e: any) => e.mode === "walking")
         .reduce((sum: number, e: any) => sum + e.delta, 0);
@@ -180,6 +180,7 @@ export default function StepsScreen() {
         .filter((e: any) => e.mode === "treadmill")
         .reduce((sum: number, e: any) => sum + e.delta, 0);
 
+      // 2. Fetch synced steps from database
       const activeParam = isTreadmill ? "treadmill" : "walking";
       const response = await fetch(
         `${API_BASE}/steps/data?mode=${activeParam}`,
@@ -204,18 +205,19 @@ export default function StepsScreen() {
       }
 
       const data = await response.json();
+
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
-
-        // Cache the target so the notification module can read it
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
           String(data.target_steps),
         );
 
+        // 3. Combine DB steps + Local steps to show the REAL total
         const freshWalking = data.walking_steps + localBufferWalking;
         const freshTreadmill = data.treadmill_steps + localBufferTreadmill;
 
+        // 4. Math.max prevents backward jumps if DB is stale but local buffer is high
         setWalkingSteps((prev) => Math.max(prev, freshWalking));
         setTreadmillSteps((prev) => Math.max(prev, freshTreadmill));
 
@@ -236,6 +238,9 @@ export default function StepsScreen() {
       setIsTreadmillMode(nextMode);
       treadmillModeRef.current = nextMode;
       await AsyncStorage.setItem(TREADMILL_MODE_KEY, JSON.stringify(nextMode));
+
+      // Refresh immediately when switching modes
+      fetchCloudMetrics();
     } catch (error) {
       console.error("Configuration toggle write error:", error);
     }
@@ -269,22 +274,15 @@ export default function StepsScreen() {
 
       if (!response.ok) throw new Error("Update target endpoint error");
 
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Invalid format received");
-      }
-
       const data = await response.json();
       clearTimeout(timeoutId);
 
       if (data.status === "success") {
         setTargetSteps(parsedGoal);
-
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
           String(parsedGoal),
         );
-
         setModalVisible(false);
       } else {
         Alert.alert("Error", data.error || "Failed to update target goal.");
@@ -293,7 +291,7 @@ export default function StepsScreen() {
       clearTimeout(timeoutId);
       Alert.alert(
         "Connection Error",
-        "TaskCare360 needs a live network link to update your step target metrics. Please check your internet connection or restart the app.",
+        "TaskCare360 needs a live network link to update your step target metrics.",
       );
     } finally {
       setUpdatingGoal(false);
@@ -303,13 +301,15 @@ export default function StepsScreen() {
   useEffect(() => {
     handlePermissionCheck();
     fetchCloudMetrics();
-    maybeShowBatteryPrompt(); // ✅ ADDED
+    maybeShowBatteryPrompt();
 
+    // Listen for background syncs finishing
     const syncListener = DeviceEventEmitter.addListener(
       "SYNC_COMPLETED",
       fetchCloudMetrics,
     );
 
+    // Listen for real-time steps when app is open
     const stepTakeListener = DeviceEventEmitter.addListener(
       "REALTIME_STEP_TAKEN",
       (event) => {
@@ -401,7 +401,7 @@ export default function StepsScreen() {
           >
             Could not load the data. The server may be busy, offline, or taking
             too long to respond. Please check your internet connection or
-            restart the app to access and update your step milestones.
+            restart the app.
           </Text>
           <TouchableOpacity
             style={{

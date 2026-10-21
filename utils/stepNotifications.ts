@@ -56,48 +56,77 @@ const nextAllowedTime = (): Date => {
 };
 
 // ─── Pick a message based on progress ────────────────────────
+// utils/stepNotifications.ts
+// Update ONLY the pickMessage function. Leave the rest of the file untouched.
+
 const pickMessage = (
   current: number,
   target: number,
   isTreadmill: boolean,
 ): { title: string; body: string } => {
-  const remaining = Math.max(0, target - current);
-  const percent = target > 0 ? Math.round((current / target) * 100) : 0;
-  const mode = isTreadmill ? "Treadmill" : "Walking";
+  if (target <= 0) {
+    return {
+      title: "🎯 Daily Step Target",
+      body: "Target step goal is not set.",
+    };
+  }
 
-  if (current === 0) {
+  const safeCurrent = Math.max(0, current);
+  const remaining = Math.max(0, target - safeCurrent);
+  const percent = Math.min(100, Math.floor((safeCurrent / target) * 100));
+
+  // ✅ Generate a clean visual progress bar (10 blocks)
+  const filledBlocks = Math.floor(percent / 10);
+  const bar = "▰".repeat(filledBlocks) + "▱".repeat(10 - filledBlocks);
+  const progressLine = `[${bar}] ${percent}%`;
+
+  // 1. Starting / Zero steps
+  if (safeCurrent === 0 || percent < 1) {
     return {
-      title: "🚶 Start moving!",
-      body: `${mode} mode: 0 / ${target.toLocaleString()} steps. Every step counts.`,
+      title: "🚦 Time to move",
+      body: `${progressLine}\nZero steps logged so far. Start your journey to a ${target.toLocaleString()} target!`,
     };
   }
-  if (current < target * 0.25) {
+
+  // 2. Early Progress (1% - 24%)
+  if (percent < 25) {
     return {
-      title: `🚶 ${percent}% of your goal`,
-      body: `${current.toLocaleString()} steps done. Only ${remaining.toLocaleString()} to go!`,
+      title: "🎯 On the board",
+      body: `${progressLine}\n${safeCurrent.toLocaleString()} steps secured. Only ${remaining.toLocaleString()} left to hit your ${target.toLocaleString()} target.`,
     };
   }
-  if (current < target * 0.5) {
+
+  // 3. Quarter Mark (25% - 49%)
+  if (percent < 50) {
     return {
-      title: `🏃 ${percent}% of your goal`,
-      body: `${remaining.toLocaleString()} steps left. Halfway there soon!`,
+      title: "📈 Picking up speed",
+      body: `${progressLine}\n${safeCurrent.toLocaleString()} steps conquered. Just ${remaining.toLocaleString()} more to reach the ${target.toLocaleString()} target.`,
     };
   }
-  if (current < target * 0.75) {
+
+  // 4. Halfway Mark (50% - 74%)
+  if (percent < 75) {
     return {
-      title: `🔥 ${percent}% of your goal`,
-      body: `${remaining.toLocaleString()} steps left. You're crushing it!`,
+      title: "🏅 Over the hump",
+      body: `${progressLine}\nYou've crossed the halfway line at ${safeCurrent.toLocaleString()} steps. ${remaining.toLocaleString()} steps to go for ${target.toLocaleString()}.`,
     };
   }
-  if (current < target) {
+
+  // 5. Almost There (75% - 99%)
+  if (percent < 100) {
     return {
-      title: `💪 Almost there — ${percent}%`,
-      body: `Only ${remaining.toLocaleString()} steps to hit ${target.toLocaleString()}. Finish strong!`,
+      title: "⚡ Home stretch",
+      body: `${progressLine}\n${safeCurrent.toLocaleString()} steps locked in. Only ${remaining.toLocaleString()} steps away from your ${target.toLocaleString()} target!`,
     };
   }
+
+  // 6. Goal Achieved / Exceeded (100%+)
+  const extra = safeCurrent - target;
+  const exceededText = extra > 0 ? ` (+${extra.toLocaleString()} extra)` : "";
+
   return {
-    title: "🎉 Goal smashed!",
-    body: `You hit ${target.toLocaleString()} steps today. Amazing work!`,
+    title: "🏆 Target conquered!",
+    body: `${progressLine}\nTotal victory! You logged ${safeCurrent.toLocaleString()} steps today${exceededText}, beating your ${target.toLocaleString()} target.`,
   };
 };
 
@@ -210,6 +239,8 @@ export const checkMilestones = async (
 // even hour from 6 AM to 12 AM (6, 8, 10, 12, 14, 16, 18, 20, 22).
 export const schedulePeriodicReminder = async () => {
   try {
+    // 🛑 DISABLE LOCAL APP-SIDE SCHEDULING
+    return;
     // Cancel previously scheduled reminders
     const existingRaw = await AsyncStorage.getItem(PERIODIC_ID_KEY);
     if (existingRaw) {

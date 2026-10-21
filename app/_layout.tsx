@@ -1,7 +1,9 @@
+// app/_layout.tsx
 import { Ionicons } from "@expo/vector-icons";
 import Constants from "expo-constants";
 import { Stack, useRouter } from "expo-router";
-import React, { useEffect, useRef } from "react"; // ✅ useRef added
+import * as ExpoSplashScreen from "expo-splash-screen";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AppState,
   Linking,
@@ -12,14 +14,18 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import CustomSplashScreen from "../components/SplashScreen";
 import { registerForPushNotifications } from "../utils/pushNotifications";
-import { initStepTracker } from "../utils/stepTracker";
+import { initStepTracker, recoverMissedSteps } from "../utils/stepTracker"; // ✅ Import recoverMissedSteps
 
 LogBox.ignoreLogs([
   "SafeAreaView has been deprecated",
   "`createAnimatedPropAdapter` is no longer necessary",
   "expo-notifications: Android Push notifications",
 ]);
+
+// ✅ Prevent the native static image from hiding instantly
+ExpoSplashScreen.preventAutoHideAsync();
 
 const isExpoGo = Constants.appOwnership === "expo";
 
@@ -31,7 +37,7 @@ if (!isExpoGo) {
       handleNotification: async () => ({
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: false,
+        shouldPlaySound: true, // Sound is important for fitness reminders
         shouldSetBadge: false,
       }),
     });
@@ -43,10 +49,12 @@ if (!isExpoGo) {
 
 export default function Layout() {
   const router = useRouter();
-  const routerRef = useRef(router); // ✅ NEW
-  routerRef.current = router; // ✅ NEW
+  const routerRef = useRef(router);
+  routerRef.current = router;
 
-  // ✅ NEW: Handle notification tap when app cold-starts
+  const [isAppReady, setIsAppReady] = useState(false);
+
+  // 1. Handle Cold Start (App was dead/swiped away)
   useEffect(() => {
     if (!Notifications) return;
 
@@ -59,12 +67,12 @@ export default function Layout() {
         console.log("[layout] cold-start notification screen:", screen);
 
         if (screen === "steps") {
+          // Short delay lets the Stack navigator mount before pushing
           setTimeout(() => {
             routerRef.current.push("/steps");
-          }, 300);
+          }, 500);
         }
 
-        // Prevent firing again on next launch
         if (Notifications.clearLastNotificationResponseAsync) {
           await Notifications.clearLastNotificationResponseAsync();
         }
@@ -76,19 +84,12 @@ export default function Layout() {
     handleInitialNotification();
   }, []);
 
+  // 2. Handle Warm Start (App was minimized)
   useEffect(() => {
-    initStepTracker().catch((e) => console.log("[layout] init error", e));
-
-    registerForPushNotifications().catch((e) =>
-      console.log("[layout] initial push registration attempt:", e),
-    );
-
     const sub = AppState.addEventListener("change", (next) => {
       if (next === "active") {
-        initStepTracker().catch(() => {});
-        registerForPushNotifications().catch((e) =>
-          console.log("[layout] foreground push registration attempt:", e),
-        );
+        // ✅ Using the imported recoverMissedSteps here
+        recoverMissedSteps().catch(() => {});
       }
     });
 
@@ -98,10 +99,10 @@ export default function Layout() {
         notifSub = Notifications.addNotificationResponseReceivedListener(
           (response: any) => {
             const screen = response.notification.request.content.data?.screen;
-            console.log("[layout] notification tap screen:", screen); // ✅ NEW log
+            console.log("[layout] notification tap screen:", screen);
 
             if (screen === "steps") {
-              routerRef.current.push("/steps"); // ✅ uses ref
+              routerRef.current.push("/steps");
             }
           },
         );
@@ -115,6 +116,36 @@ export default function Layout() {
       if (notifSub) notifSub.remove();
     };
   }, []);
+
+  // ✅ THE ONLY PLACE INITIALIZATION HAPPENS (AFTER SPLASH)
+  const handleSplashFinish = async () => {
+    setIsAppReady(true);
+
+    // Wait 100ms for the UI to mount before asking for permissions
+    setTimeout(async () => {
+      try {
+        // This asks for Notifications, Physical Activity, and Health Connect
+        await initStepTracker();
+        await registerForPushNotifications();
+      } catch (e) {
+        console.log("Permission/Init error:", e);
+      }
+    }, 100);
+  };
+
+  // ✅ SHOW SPLASH SCREEN IF NOT READY
+  if (!isAppReady) {
+    return (
+      <View
+        style={{ flex: 1, backgroundColor: "#ffffff" }}
+        onLayout={async () => {
+          await ExpoSplashScreen.hideAsync();
+        }}
+      >
+        <CustomSplashScreen onFinish={handleSplashFinish} />
+      </View>
+    );
+  }
 
   const NavItem = ({
     icon,
