@@ -1,3 +1,4 @@
+import NetInfo from "@react-native-community/netinfo"; // ✅ Import NetInfo
 import * as Clipboard from "expo-clipboard";
 import * as LinkingExpo from "expo-linking";
 import { useRouter } from "expo-router";
@@ -26,6 +27,9 @@ export default function LandingScreen() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
 
+  // ✅ Network state
+  const [isConnected, setIsConnected] = useState<boolean | null>(true);
+
   // Check login state on component mount
   useEffect(() => {
     const checkSession = async () => {
@@ -48,6 +52,43 @@ export default function LandingScreen() {
     };
     checkSession();
   }, []);
+
+  // ✅ Listen for network changes
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected && state.isInternetReachable !== false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleRetryConnection = async () => {
+    const state = await NetInfo.fetch();
+    if (state.isConnected && state.isInternetReachable !== false) {
+      setIsConnected(true);
+      setCheckingAuth(true);
+      try {
+        const response = await fetch(`${API_BASE}/dashboard`, {
+          credentials: "include",
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === "success") {
+            setIsLoggedIn(true);
+            setUser(data.username || "User");
+          }
+        }
+      } catch (e) {
+        // Ignore
+      } finally {
+        setCheckingAuth(false);
+      }
+    } else {
+      Alert.alert(
+        "Still Offline",
+        "Please check your internet connection and try again.",
+      );
+    }
+  };
 
   const handleLogout = async () => {
     Alert.alert("Logout", "Are you sure you want to sign out?", [
@@ -94,6 +135,34 @@ export default function LandingScreen() {
       );
     }
   };
+
+  // ✅ Show Network Error Block if offline
+  if (isConnected === false) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: "#1a1a2e" }}>
+        <View style={styles.errorContainer}>
+          <MaterialCommunityIcons
+            name="cloud-off-outline"
+            size={80}
+            color="#ff6b35"
+            style={{ marginBottom: 20 }}
+          />
+          <Text style={styles.errorTitle}>No Internet Connection</Text>
+          <Text style={styles.errorSubtext}>
+            TaskCare360 requires an active internet connection to load your
+            tasks and fitness data. Please check your Wi-Fi or mobile data.
+          </Text>
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={handleRetryConnection}
+          >
+            <MaterialCommunityIcons name="refresh" size={20} color="#1a1a2e" />
+            <Text style={styles.retryBtnText}>Retry Connection</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
@@ -366,5 +435,40 @@ const styles = StyleSheet.create({
     color: "#3498db",
     textDecorationLine: "underline",
     textAlign: "center",
+  },
+  // ✅ NEW STYLES FOR OFFLINE SCREEN
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 30,
+  },
+  errorTitle: {
+    color: "#ffffff",
+    fontSize: 22,
+    fontWeight: "800",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  errorSubtext: {
+    color: "#a4b0be",
+    fontSize: 15,
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 30,
+  },
+  retryBtn: {
+    backgroundColor: "#4ecca3",
+    paddingVertical: 14,
+    paddingHorizontal: 36,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  retryBtnText: {
+    color: "#1a1a2e",
+    fontWeight: "bold",
+    fontSize: 15,
   },
 });
