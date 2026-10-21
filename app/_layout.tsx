@@ -121,16 +121,19 @@ export default function Layout() {
   const handleSplashFinish = async () => {
     setIsAppReady(true);
 
-    // Wait 100ms for the UI to mount before asking for permissions
+    // Wait 3 seconds to ensure the session is fully loaded before registering
     setTimeout(async () => {
       try {
-        // This asks for Notifications, Physical Activity, and Health Connect
+        // Start the step tracker
         await initStepTracker();
+
+        // ✅ THIS IS THE MISSING PIECE.
+        // We MUST register the push token after the app is ready.
         await registerForPushNotifications();
       } catch (e) {
         console.log("Permission/Init error:", e);
       }
-    }, 100);
+    }, 4000); // Changed to 4000ms
   };
 
   // ✅ SHOW SPLASH SCREEN IF NOT READY

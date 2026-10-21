@@ -9,7 +9,7 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
     Animated.loop(
       Animated.timing(spinValue, {
         toValue: 1,
-        duration: 1000, // Slightly faster spin for a better loading feel
+        duration: 1000,
         useNativeDriver: true,
       }),
     ).start();
@@ -28,14 +28,13 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
 
   return (
     <View style={styles.container}>
-      {/* App Logo on Top */}
+      {/* ✅ Shrunk to match the native fallback icon size */}
       <Image
         source={require("../assets/images/icon.png")}
         style={styles.logo}
         resizeMode="contain"
       />
 
-      {/* Spinner and Loading Text Inline Below */}
       <View style={styles.loadingRow}>
         <Animated.View
           style={[styles.spinner, { transform: [{ rotate: spin }] }]}
@@ -54,27 +53,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 120,
-    height: 120,
-    marginBottom: 20, // Space between logo and the spinner row
+    width: 100, // ✅ Shrunk from 180 to 100
+    height: 100,
+    marginBottom: 0,
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 12, // Space between the spinner and the text
+    gap: 10,
   },
   spinner: {
-    width: 24, // Smaller, standard spinner size
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 3, // Thinner border for the small spinner
-    borderColor: "#4ecca3", // Your theme green
+    width: 18, // ✅ Shrunk to match
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 3,
+    borderColor: "#4ecca3",
     borderTopColor: "transparent",
   },
   loadingText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 16, // ✅ Shrunk to match
+    fontWeight: "bold",
     color: "#333",
     letterSpacing: 0.5,
   },

@@ -245,6 +245,7 @@ export const scheduleFlush = () => {
 };
 
 // ─── Core: read pedometer and compute a delta ────────────────
+// ✅ 1. Update readPedometerDelta to lock the AsyncStorage write
 const readPedometerDelta = async (): Promise<{
   delta: number;
   current: number;
@@ -264,9 +265,6 @@ const readPedometerDelta = async (): Promise<{
       await AsyncStorage.setItem(BASELINE_COUNT_KEY, todaySteps.toString());
       await AsyncStorage.setItem(LAST_SYNCED_DATE_KEY, todayKey);
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
-      console.log(
-        `[stepTracker] New day ${todayKey} — baseline anchored at ${todaySteps}`,
-      );
       return { delta: 0, current: todaySteps };
     }
 
@@ -275,18 +273,17 @@ const readPedometerDelta = async (): Promise<{
     const delta = todaySteps - lastSynced;
 
     if (delta > 0) {
+      // ✅ UPDATE the baseline immediately so concurrent tasks see the new value
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
     }
 
     return { delta: Math.max(0, delta), current: todaySteps };
   } catch (e) {
-    console.log("[stepTracker] readPedometerDelta error:", e);
     return null;
   }
 };
 
-// ─── Recover missed steps ────────────────────────────────────
-// ✅ 3. Update recoverMissedSteps to update Last Synced Count BEFORE enqueueing
+// ✅ 2. Update recoverMissedSteps to drop the lock immediately
 export const recoverMissedSteps = async () => {
   if (isRecovering) return;
   isRecovering = true;
@@ -295,10 +292,9 @@ export const recoverMissedSteps = async () => {
     const result = await readPedometerDelta();
     if (!result || result.delta <= 0) return;
 
-    // Note: readPedometerDelta already updates LAST_SYNCED_COUNT_KEY
-    // But we need to make sure the lock prevents this from running twice.
-
     const mode = await readActiveMode();
+    
+    // Enqueue the steps
     await enqueueSteps(result.delta, mode);
 
     DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
@@ -306,18 +302,11 @@ export const recoverMissedSteps = async () => {
       mode,
     });
 
-    try {
-      const userTargetRaw = await AsyncStorage.getItem(
-        "@taskcare360_cached_target",
-      );
-      const userTarget = userTargetRaw ? parseInt(userTargetRaw, 10) : 5000;
-      //await checkMilestones(result.current, userTarget, mode === "treadmill");
-    } catch (e) {
-      console.log("[stepTracker] milestone check error:", e);
-    }
-
-    scheduleFlush();
+    // ✅ Flush immediately, do not wait for the debounce timer in background
+    await flushQueue();
+    
   } finally {
+    // ✅ Release the lock EXACTLY when done
     isRecovering = false;
   }
 };
@@ -503,14 +492,16 @@ const ensureBackgroundStepTracking = async () => {
     const bgAvailable = await isBackgroundAvailableAsync();
     if (!bgAvailable) return;
 
-    // ✅ Request Background Health Connect Permission
-    await requestBackgroundPermissionsAsync();
-
-    // ✅ Request Foreground Physical Activity Permission (if not already granted)
+    // 1. Request Foreground Physical Activity Permission first
     const existing = await getPermissionsAsync();
     if (existing.status !== PermissionStatus.GRANTED) {
       await requestPermissionsAsync();
+      // ✅ Wait 1 second so Android doesn't block the next prompt
+      await new Promise((resolve) => setTimeout(resolve, 2000));
     }
+
+    // 2. Then request the Background Health Connect Permission
+    await requestBackgroundPermissionsAsync();
 
     const alreadyRegistered =
       await TaskManager.isTaskRegisteredAsync(STEP_COUNT_TASK);

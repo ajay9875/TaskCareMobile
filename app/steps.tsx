@@ -206,6 +206,8 @@ export default function StepsScreen() {
 
       const data = await response.json();
 
+// Inside app/steps.tsx -> fetchCloudMetrics
+
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
         await AsyncStorage.setItem(
@@ -213,13 +215,27 @@ export default function StepsScreen() {
           String(data.target_steps),
         );
 
-        // 3. Combine DB steps + Local steps to show the REAL total
-        const freshWalking = data.walking_steps + localBufferWalking;
-        const freshTreadmill = data.treadmill_steps + localBufferTreadmill;
+        // ✅ Clear the local queue if the DB has already caught up
+        // This prevents double-counting when opening the app
+        const { getPendingQueue, flushQueue } = require("../utils/stepTracker");
+        const currentQueue = await getPendingQueue();
+        
+        // If queue is empty, we can trust the database values completely
+        if (currentQueue.length === 0) {
+          setWalkingSteps(data.walking_steps);
+          setTreadmillSteps(data.treadmill_steps);
+        } else {
+          // If queue has items, add them to DB value
+          const localBufferWalking = currentQueue
+            .filter((e: any) => e.mode === "walking")
+            .reduce((sum: number, e: any) => sum + e.delta, 0);
+          const localBufferTreadmill = currentQueue
+            .filter((e: any) => e.mode === "treadmill")
+            .reduce((sum: number, e: any) => sum + e.delta, 0);
 
-        // 4. Math.max prevents backward jumps if DB is stale but local buffer is high
-        setWalkingSteps((prev) => Math.max(prev, freshWalking));
-        setTreadmillSteps((prev) => Math.max(prev, freshTreadmill));
+          setWalkingSteps(data.walking_steps + localBufferWalking);
+          setTreadmillSteps(data.treadmill_steps + localBufferTreadmill);
+        }
 
         setHasNetError(false);
       }
