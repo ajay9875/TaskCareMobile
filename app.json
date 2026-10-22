@@ -30,7 +30,7 @@
       ],
       "adaptiveIcon": {
         "backgroundColor": "#4e5cdb",
-        "foregroundImage": "./assets/images/android-icon-foreground.png"
+        "foregroundImage": "./assets/images/icon.png"
       },
       "intentFilters": [
         {

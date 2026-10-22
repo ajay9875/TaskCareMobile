@@ -28,7 +28,7 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
 
   return (
     <View style={styles.container}>
-      {/* App Logo - Shrunk further to 80x80 */}
+      {/* App Logo */}
       <Image
         source={require("../assets/images/icon.png")}
         style={styles.logo}
@@ -54,9 +54,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 80, // ✅ Shrunk to match the native image exactly
+    width: 80,
     height: 80,
-    marginBottom: 0, // Tight gap
+    marginBottom: 2, // ✅ Added margin to match the gap in the native image
   },
   loadingRow: {
     flexDirection: "row",
@@ -65,7 +65,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   spinner: {
-    width: 14, // ✅ Shrunk to match the smaller text
+    width: 14,
     height: 14,
     borderRadius: 7,
     borderWidth: 2,
@@ -73,9 +73,9 @@ const styles = StyleSheet.create({
     borderTopColor: "transparent",
   },
   loadingText: {
-    fontSize: 14, // ✅ Shrunk to match the native image font size
+    fontSize: 16, // ✅ Increased from 14 to 16 to match the native text size
     fontWeight: "bold",
-    color: "#333",
+    color: "#6b7280", // ✅ Changed to a lighter grey to match the native image
     letterSpacing: 0.5,
   },
 });
