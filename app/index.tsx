@@ -1,6 +1,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
-import { useFocusEffect, useRouter } from "expo-router"; // ✅ Import useFocusEffect
+import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -24,13 +24,13 @@ export default function LandingScreen() {
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
 
-  // ✅ Same mechanism as steps.tsx
+  // ✅ Network logic remains exactly the same
   const checkSession = useCallback(async () => {
     setLoading(true);
-    setHasNetError(false); // Reset error state on new check
+    setHasNetError(false);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
       const response = await fetch(`${API_BASE}/dashboard`, {
@@ -63,8 +63,6 @@ export default function LandingScreen() {
     }
   }, [API_BASE]);
 
-  // ✅ Use useFocusEffect instead of useEffect
-  // This runs EVERY TIME the user opens this screen (Home tab)
   useFocusEffect(
     useCallback(() => {
       checkSession();
@@ -156,15 +154,17 @@ export default function LandingScreen() {
 
   // ✅ 3. Main UI
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#fff" }}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        {/* HERO SECTION */}
         <View style={styles.heroSection}>
           <View style={styles.logoContainer}>
-            <Ionicons name="checkmark-done-circle" size={100} color="#0300a8" />
+            <Ionicons name="checkmark-done-circle" size={90} color="#0300a8" />
           </View>
           <Text style={styles.header}>TaskCare360</Text>
         </View>
 
+        {/* LOGGED IN BANNER */}
         {isLoggedIn && (
           <View style={styles.loggedInBanner}>
             <Ionicons name="person-circle" size={24} color="#2e7d32" />
@@ -179,54 +179,160 @@ export default function LandingScreen() {
           and manage your priorities seamlessly all in one place.
         </Text>
 
-        <View style={styles.featureBox}>
-          <Text style={styles.featureTitle}>🏃‍♂️ About Fitness Tracker</Text>
-          <Text style={styles.featureItem}>
-            👟 Real-time Step Counter – Track your steps dynamically on screen.
-          </Text>
-          <Text style={styles.featureItem}>
-            🔥 Treadmill Calibration – Swap algorithms to match physical
-            machines.
-          </Text>
-          <Text style={styles.featureItem}>
-            📊 Auto-Sync Metrics – Saves records to the database every 5 steps
-            or 5 seconds.
-          </Text>
-          <Text style={styles.featureItem}>
-            ⏳ Daily fitness summary via email.
-          </Text>
+        {/* FITNESS SECTION */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons
+              name="fitness"
+              size={24}
+              color="#4ecca3"
+              style={styles.cardIcon}
+            />
+            <Text style={styles.cardTitle}>Fitness Tracker</Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="footsteps" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Real-time Step Counter – Track your steps dynamically on screen.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <MaterialCommunityIcons name="treadmill" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Treadmill Calibration – Swap algorithms to match physical
+              machines.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="sync-circle" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Auto-Sync Metrics – Saves records to the database every 5 steps or
+              5 seconds.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="time" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Daily fitness summary via email.
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.stepsOutsideBox}>
+        {/* HOW TO USE FITNESS */}
+        <View style={styles.stepsBox}>
           <Text style={styles.stepsTitle}>How to use the Fitness Tracker:</Text>
-          <Text style={styles.stepsItem}>
-            1. Grant physical activity permission or sensor permissions when
-            prompted by your phone.
-          </Text>
-          <Text style={styles.stepsItem}>
-            2. Head to the tracking screen and select your mode (Regular or
-            Treadmill).
-          </Text>
-          <Text style={styles.stepsItem}>
-            3. Keep the app running in the foreground or background while
-            moving; steps synchronize smoothly without locking the page.
-          </Text>
+
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="shield-check"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              1. Grant physical activity permission when prompted.
+            </Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons name="run-fast" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              2. Head to the tracking screen and select your mode (Regular or
+              Treadmill).
+            </Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <Ionicons name="phone-portrait-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              3. Keep the app running in the foreground or background while
+              moving; steps sync automatically.
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.featureBox}>
-          <Text style={styles.featureTitle}>📋 About Task Manager</Text>
-          <Text style={styles.featureItem}>
-            📌 Easy Task Management – Add, edit, and delete items cleanly.
-          </Text>
-          <Text style={styles.featureItem}>
-            ⏳ Daily Email Reminders – Stay on track with pending obligations.
-          </Text>
-          <Text style={styles.featureItem}>
-            🔄 Secure Cloud Backups – Never lose your data layout updates.
-          </Text>
+        {/* TASK MANAGER SECTION */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons
+              name="clipboard"
+              size={24}
+              color="#4ecca3"
+              style={styles.cardIcon}
+            />
+            <Text style={styles.cardTitle}>Task Manager</Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="create" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Easy Task Management – Add, edit, and delete items cleanly.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="mail" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Daily Email Reminders – Stay on track with pending obligations.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="cloud-upload" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Secure Cloud Backups – Never lose your data layout updates.
+            </Text>
+          </View>
+        </View>
+
+        {/* HOW TO USE TASKS - Updated to match dashboard steps & icons */}
+        <View style={styles.stepsBox}>
+          <Text style={styles.stepsTitle}>How to manage your Tasks:</Text>
+
+          <View style={styles.stepRow}>
+            <Ionicons name="log-in-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              1. Tap "Get Started" or log into your account dashboard profile.
+            </Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <Ionicons name="add-circle-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              2. Click on "+Add to TaskCare" button to insert new tasks.
+            </Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="checkbox-marked-circle-outline"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>3. Check them off as completed.</Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="pencil-outline"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              4. Edit tasks anytime using the pencil icon.
+            </Text>
+          </View>
+
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="trash-can-outline"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              5. Delete tasks permanently using the trash icon.
+            </Text>
+          </View>
         </View>
       </ScrollView>
 
+      {/* BUTTONS */}
       <View style={styles.buttonContainer}>
         {isLoggedIn ? (
           <View style={styles.loggedInGroup}>
@@ -283,11 +389,11 @@ export default function LandingScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 15 },
-  scrollContainer: { padding: 20, alignItems: "center" },
-  heroSection: { alignItems: "center", marginTop: 20, marginBottom: 10 },
+  scrollContainer: { padding: 20, paddingBottom: 30, alignItems: "center" },
+  heroSection: { alignItems: "center", marginTop: 20, marginBottom: 15 },
   logoContainer: { marginBottom: 10 },
   header: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "bold",
     textAlign: "center",
     color: "#2c3e50",
@@ -301,51 +407,76 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
-    marginBottom: 15,
+    marginBottom: 20,
     gap: 8,
   },
   loggedInText: { fontSize: 14, color: "#1b5e20" },
   subtext: {
     textAlign: "center",
     color: "#666",
-    marginBottom: 20,
+    marginBottom: 25,
     lineHeight: 22,
     paddingHorizontal: 10,
   },
-  featureBox: {
+  card: {
     width: "100%",
     padding: 20,
-    backgroundColor: "#f9f9f9",
+    backgroundColor: "#ffffff",
     borderRadius: 15,
-    marginBottom: 15,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#f0f0f0",
+    borderColor: "#e9ecef",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  featureTitle: {
-    fontWeight: "bold",
-    fontSize: 18,
-    marginBottom: 15,
-    color: "#2c3e50",
+  cardHeader: { flexDirection: "row", alignItems: "center", marginBottom: 15 },
+  cardIcon: { marginRight: 10 },
+  cardTitle: { fontWeight: "bold", fontSize: 18, color: "#2c3e50" },
+  featureRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
   },
-  featureItem: { marginBottom: 10, lineHeight: 20, color: "#444" },
-  stepsOutsideBox: {
+  featureText: { flex: 1, marginLeft: 10, lineHeight: 20, color: "#444" },
+  stepsBox: {
     width: "100%",
     paddingHorizontal: 10,
-    marginBottom: 25,
+    marginBottom: 30,
     alignItems: "flex-start",
   },
   stepsTitle: {
     fontWeight: "700",
     fontSize: 16,
     color: "#2c3e50",
-    marginBottom: 10,
+    marginBottom: 15,
   },
-  stepsItem: { fontSize: 14, color: "#555", lineHeight: 20, marginBottom: 8 },
+
+  // ✅ New styles for the icon-based steps
+  stepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: 12,
+    paddingRight: 10,
+  },
+  stepText: {
+    flex: 1,
+    fontSize: 14,
+    color: "#555",
+    lineHeight: 20,
+    marginLeft: 10,
+  },
+
   buttonContainer: {
     paddingHorizontal: 20,
     paddingBottom: 10,
     paddingVertical: 15,
     width: "100%",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e9ecef",
   },
   guestGroup: { width: "100%", gap: 10 },
   buttonRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
@@ -396,6 +527,7 @@ const styles = StyleSheet.create({
     color: "#3498db",
     textDecorationLine: "underline",
     textAlign: "center",
+    fontSize: 14,
   },
   errorContainer: {
     flex: 1,

@@ -28,13 +28,14 @@ export default function SplashScreen({ onFinish }: { onFinish?: () => void }) {
 
   return (
     <View style={styles.container}>
-      {/* ✅ Shrunk to match the native fallback icon size */}
+      {/* App Logo - Shrunk further to 80x80 */}
       <Image
         source={require("../assets/images/icon.png")}
         style={styles.logo}
         resizeMode="contain"
       />
 
+      {/* Loading Row */}
       <View style={styles.loadingRow}>
         <Animated.View
           style={[styles.spinner, { transform: [{ rotate: spin }] }]}
@@ -53,26 +54,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logo: {
-    width: 100, // ✅ Shrunk from 180 to 100
-    height: 100,
-    marginBottom: 0,
+    width: 80, // ✅ Shrunk to match the native image exactly
+    height: 80,
+    marginBottom: 0, // Tight gap
   },
   loadingRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 10,
+    gap: 6,
   },
   spinner: {
-    width: 18, // ✅ Shrunk to match
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 3,
+    width: 14, // ✅ Shrunk to match the smaller text
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
     borderColor: "#4ecca3",
     borderTopColor: "transparent",
   },
   loadingText: {
-    fontSize: 16, // ✅ Shrunk to match
+    fontSize: 14, // ✅ Shrunk to match the native image font size
     fontWeight: "bold",
     color: "#333",
     letterSpacing: 0.5,
