@@ -110,8 +110,7 @@
           "color": "#4e5cdb",
           "defaultChannel": "default"
         }
-      ],
-      "react-native-health-connect"
+      ]
     ],
     "extra": {
       "eas": {
