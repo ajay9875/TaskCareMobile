@@ -11,14 +11,16 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ajay.taskcare360",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "processing"],
+        "UIBackgroundModes": [
+          "fetch",
+          "processing"
+        ],
         "NSMotionUsageDescription": "Allow TaskCare 360 to track your steps even when the app is closed."
       }
     },
     "android": {
       "package": "com.ajay.taskcare360",
       "googleServicesFile": "./google-services.json",
-
       "permissions": [
         "RECEIVE_BOOT_COMPLETED",
         "WAKE_LOCK",
@@ -26,7 +28,9 @@
         "FOREGROUND_SERVICE_HEALTH",
         "POST_NOTIFICATIONS",
         "SCHEDULE_EXACT_ALARM",
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.health.READ_STEPS",
+        "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#4e5cdb",
@@ -35,22 +39,42 @@
       "intentFilters": [
         {
           "action": "VIEW",
-          "data": { "scheme": "mailto" }
+          "data": {
+            "scheme": "mailto"
+          }
         },
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": { "scheme": "taskcaremobile", "host": "login" }
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": {
+            "scheme": "taskcaremobile",
+            "host": "login"
+          }
         },
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": { "scheme": "taskcaremobile", "host": "support" }
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": {
+            "scheme": "taskcaremobile",
+            "host": "support"
+          }
         },
         {
           "action": "VIEW",
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": { "scheme": "taskcaremobile", "host": "dashboard" }
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ],
+          "data": {
+            "scheme": "taskcaremobile",
+            "host": "dashboard"
+          }
         }
       ]
     },
@@ -80,22 +104,14 @@
       "expo-image",
       "expo-web-browser",
       [
-        "expo-pedometer",
-        {
-          "iosHealthKitPermission": "Allow TaskCare 360 to read your step count to keep your daily progress updated.",
-          "iosHealthKitBackgroundDelivery": true,
-          "androidHealthConnectPrivacyPolicyUrl": "https://taskcare360.pythonanywhere.com/privacy",
-          "androidHealthConnectBackgroundRead": true
-        }
-      ],
-      [
         "expo-notifications",
         {
           "icon": "./assets/images/notification-icon.png",
           "color": "#4e5cdb",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "react-native-health-connect"
     ],
     "extra": {
       "eas": {

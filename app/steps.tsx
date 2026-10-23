@@ -2,12 +2,6 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  getPermissionsAsync,
-  isAvailableAsync,
-  PermissionStatus,
-  requestPermissionsAsync,
-} from "expo-pedometer";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -44,7 +38,6 @@ export default function StepsScreen() {
 
   const blinkAnim = useRef(new Animated.Value(1)).current;
   const treadmillModeRef = useRef(isTreadmillMode);
-  const isCheckingPermissions = useRef(false);
   const router = useRouter();
 
   const handleSessionExpired = useCallback(() => {
@@ -52,77 +45,6 @@ export default function StepsScreen() {
   }, [router]);
 
   const [hasNetError, setHasNetError] = useState(false);
-
-  const handlePermissionCheck = async (): Promise<boolean> => {
-    if (isCheckingPermissions.current) return false;
-    isCheckingPermissions.current = true;
-
-    try {
-      const available = await isAvailableAsync();
-      if (!available) {
-        isCheckingPermissions.current = false;
-        return false;
-      }
-
-      const existing = await getPermissionsAsync();
-
-      if (existing.status === PermissionStatus.GRANTED) {
-        isCheckingPermissions.current = false;
-        return true;
-      }
-
-      if (existing.canAskAgain) {
-        const requested = await requestPermissionsAsync();
-        if (requested.status === PermissionStatus.GRANTED) {
-          isCheckingPermissions.current = false;
-          return true;
-        }
-
-        const updated = await getPermissionsAsync();
-        if (!updated.canAskAgain) {
-          isCheckingPermissions.current = false;
-        }
-      }
-
-      Alert.alert(
-        "Physical Activity Permission Required",
-        "Required to track your steps.\n\n" +
-          "How to enable:\n" +
-          "1. Tap 'Open Settings' below.\n" +
-          "2. Select 'Permissions'.\n" +
-          "3. Tap 'Physical activity' (or 'Motion').\n" +
-          "4. Choose 'Allow'.",
-        [
-          {
-            text: "Open Settings",
-            onPress: async () => {
-              isCheckingPermissions.current = false;
-              await Linking.openSettings();
-            },
-          },
-          {
-            text: "Cancel",
-            style: "cancel",
-            onPress: () => {
-              isCheckingPermissions.current = false;
-            },
-          },
-        ],
-        {
-          cancelable: true,
-          onDismiss: () => {
-            isCheckingPermissions.current = false;
-          },
-        },
-      );
-
-      return false;
-    } catch (e) {
-      console.log("Permission check error:", e);
-      isCheckingPermissions.current = false;
-      return false;
-    }
-  };
 
   const maybeShowBatteryPrompt = async () => {
     if (Platform.OS !== "android") return;
@@ -206,7 +128,7 @@ export default function StepsScreen() {
 
       const data = await response.json();
 
-// Inside app/steps.tsx -> fetchCloudMetrics
+      // Inside app/steps.tsx -> fetchCloudMetrics
 
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
@@ -219,7 +141,7 @@ export default function StepsScreen() {
         // This prevents double-counting when opening the app
         const { getPendingQueue, flushQueue } = require("../utils/stepTracker");
         const currentQueue = await getPendingQueue();
-        
+
         // If queue is empty, we can trust the database values completely
         if (currentQueue.length === 0) {
           setWalkingSteps(data.walking_steps);
@@ -315,14 +237,16 @@ export default function StepsScreen() {
   };
 
   useEffect(() => {
-    handlePermissionCheck();
     fetchCloudMetrics();
     maybeShowBatteryPrompt();
 
     // Listen for background syncs finishing
     const syncListener = DeviceEventEmitter.addListener(
       "SYNC_COMPLETED",
-      fetchCloudMetrics,
+      () => {
+        // ✅ Wait 1 second for Python to finish saving before pulling the DB
+        setTimeout(fetchCloudMetrics, 1000);
+      },
     );
 
     // Listen for real-time steps when app is open
