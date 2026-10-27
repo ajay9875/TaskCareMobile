@@ -53,8 +53,12 @@ export default function VerifyOTP() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Verify OTP</Text>
-
+      {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+      <View style={styles.pageHeaderBlock}>
+        <MaterialCommunityIcons name="shield-check" size={40} color="#2ECC71" />
+        <Text style={styles.pageHeaderTitle}>Verify OTP</Text>
+        <Text style={styles.pageHeaderSubtitle}>Enter the 6-digit code sent to your email.</Text>
+      </View>
       <Text style={styles.desc}>
         Enter the 6-digit code sent to {email}
       </Text>
@@ -89,6 +93,24 @@ export default function VerifyOTP() {
 
 const styles = StyleSheet.create({
   container:{flex:1,padding:25,justifyContent:'center',backgroundColor:'#fff'},
+  pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  pageHeaderTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#2C3E50",
+    marginTop: 10,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "500",
+    textAlign: "center",
+  },
   title:{fontSize:24,fontWeight:'bold',marginBottom:10,textAlign:'center'},
   desc:{textAlign:'center',marginBottom:25,color:'#666'},
   otpInput:{borderWidth:1,borderColor:'#ddd',padding:15,borderRadius:10,fontSize:28,letterSpacing:10,textAlign:'center',marginBottom:25},

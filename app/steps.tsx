@@ -207,7 +207,7 @@ export default function StepsScreen() {
 
       const data = await response.json();
 
-// Inside app/steps.tsx -> fetchCloudMetrics
+      // Inside app/steps.tsx -> fetchCloudMetrics
 
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
@@ -223,7 +223,7 @@ export default function StepsScreen() {
         // This prevents double-counting when opening the app
         const { getPendingQueue, flushQueue } = require("../utils/stepTracker");
         const currentQueue = await getPendingQueue();
-        
+
         // If queue is empty, we can trust the database values completely
         if (currentQueue.length === 0) {
           setWalkingSteps(data.walking_steps);
@@ -299,7 +299,7 @@ export default function StepsScreen() {
 
       if (data.status === "success") {
         setTargetSteps(parsedGoal);
-        
+
         // ✅ 1. Save to AsyncStorage for the next boot
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
@@ -323,7 +323,6 @@ export default function StepsScreen() {
       setUpdatingGoal(false);
     }
   };
-
 
   useEffect(() => {
     handlePermissionCheck();
@@ -469,6 +468,13 @@ export default function StepsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
       <LinearGradient colors={["#000000", "#111111"]} style={styles.container}>
+        {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+        <View style={styles.pageHeaderBlock}>
+          <Text style={styles.pageHeaderTitle}>Fitness Tracker</Text>
+          <Text style={styles.pageHeaderSubtitle}>
+            Track your daily movement accurately.
+          </Text>
+        </View>
         <View style={styles.header}>
           <View style={styles.liveBadge}>
             <Animated.View style={[styles.liveDot, { opacity: blinkAnim }]} />
@@ -679,6 +685,24 @@ export default function StepsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 15 },
+  pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 15,
+    marginTop: 5,
+  },
+  pageHeaderTitle: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#ffffff",
+    marginTop: 8,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 13,
+    color: "#a4b0be",
+    marginTop: 4,
+    fontWeight: "500",
+  },
   header: {
     marginTop: 15,
     flexDirection: "row",

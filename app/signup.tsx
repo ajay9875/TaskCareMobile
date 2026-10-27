@@ -55,7 +55,12 @@ const handleSignup = async () => {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Join TaskCare360</Text>
+            {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+      <View style={styles.pageHeaderBlock}>
+        <MaterialCommunityIcons name="account-plus" size={40} color="#2ecc71" />
+        <Text style={styles.pageHeaderTitle}>Create Account</Text>
+        <Text style={styles.pageHeaderSubtitle}>Join TaskCare360 to organize your life.</Text>
+      </View>
 
       <TextInput
         style={styles.input}
@@ -111,6 +116,23 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: "center",
     backgroundColor: "#FFFFFF", // Forced White Background
+  },
+    pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  pageHeaderTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#2C3E50",
+    marginTop: 10,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "500",
   },
   title: {
     fontSize: 24,

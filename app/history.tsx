@@ -63,7 +63,7 @@ export default function HistoryScreen() {
       if (json.status === "success") {
         // Only keep entries that exist from DB (prevents injecting false 0-value filler days)
         const activeHistory = (json.history || []).filter(item => item && item.date);
-        setHistory(activeHistory.reverse()); 
+        setHistory(activeHistory); 
         setHasNetError(false);
       }
       
@@ -112,7 +112,7 @@ const renderHeaderSummary = () => {
         </View>
         <View style={styles.summaryTitleTextContainer}>
           <Text style={styles.summaryTitleText}>
-            {history.length === 1 ? "TODAY'S SUMMARY" : `${history.length}-DAY OVERALL PERFORMANCE`}
+            {history.length === 1 ? "TODAY'S SUMMARY" : "LIFETIME PERFORMANCE"}
           </Text>
           <Text style={styles.summaryTitleSubtext}>Your Complete Fitness Journey</Text>
         </View>

@@ -10,7 +10,11 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../context/AuthContext"; // ✅ Add this
 import { registerForPushNotifications } from "../utils/pushNotifications";
+// Add these right below the other imports at the top of login.tsx
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { updateNativeTarget } from "../utils/stepTracker";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,6 +23,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const params = useLocalSearchParams();
+  const { checkSession } = useAuth(); // ✅ Add this
 
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
@@ -62,13 +67,17 @@ export default function Login() {
       const data = await response.json();
 
       if (data.status === "success") {
-
         // ✅ ADD THIS: Tell the notification to update the target right after login
-        const cachedTarget = await AsyncStorage.getItem("@taskcare360_cached_target");
+        const cachedTarget = await AsyncStorage.getItem(
+          "@taskcare360_cached_target",
+        );
         if (cachedTarget) {
-           await updateNativeTarget(parseInt(cachedTarget, 10));
+          await updateNativeTarget(parseInt(cachedTarget, 10));
         }
-        
+
+        // ✅ ADD THIS: Force the global header to update instantly!
+        await checkSession();
+
         // ✅ 1. Navigate IMMEDIATELY — user shouldn't wait for push registration
         router.replace("/dashboard");
 
@@ -117,7 +126,13 @@ export default function Login() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Welcome Back!</Text>
+
+      {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+      <View style={styles.pageHeaderBlock}>
+        <MaterialCommunityIcons name="shield-account" size={40} color="#3498db" />
+        <Text style={styles.pageHeaderTitle}>Welcome Back</Text>
+        <Text style={styles.pageHeaderSubtitle}>Sign in to continue your progress.</Text>
+      </View>
 
       <TextInput
         style={styles.input}
@@ -183,6 +198,23 @@ const styles = StyleSheet.create({
     padding: 20,
     justifyContent: "center",
     backgroundColor: "#faf3f3",
+  },
+    pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  pageHeaderTitle: {
+    fontSize: 28,
+    fontWeight: "800",
+    color: "#2C3E50",
+    marginTop: 10,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "500",
   },
   title: {
     fontSize: 22,

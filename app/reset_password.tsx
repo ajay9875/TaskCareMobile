@@ -60,7 +60,14 @@ export default function ResetPassword() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create New Password</Text>
+      
+      {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+      <View style={styles.pageHeaderBlock}>
+        <MaterialCommunityIcons name="lock-open" size={40} color="#E74C3C" />
+        <Text style={styles.pageHeaderTitle}>New Password</Text>
+        <Text style={styles.pageHeaderSubtitle}>Create a strong, secure password.</Text>
+      </View>
+
 
       {/* FIXED: Changed style from .input to .passwordContainer */}
       <View style={styles.passwordContainer}>
@@ -102,6 +109,24 @@ export default function ResetPassword() {
 
 const styles = StyleSheet.create({
   container:{flex:1,padding:25,justifyContent:'center',backgroundColor:'#fff'},
+    pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  pageHeaderTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#2C3E50",
+    marginTop: 10,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "500",
+    textAlign: "center",
+  },
   title:{fontSize:24,fontWeight:'bold',marginBottom:20,textAlign:'center'},
   input:{borderWidth:1,borderColor:'#ddd',padding:15,borderRadius:10,marginBottom:15},
   button:{backgroundColor:'#E74C3C',padding:16,borderRadius:10,alignItems:'center'},

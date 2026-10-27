@@ -543,8 +543,8 @@ export const updateNativeTarget = async (newTarget: number) => {
   try {
     await StepTracker.updateConfig({
       dailyGoal: newTarget,
-        // ✅ Keep the format identical using native tokens
-        notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+      // ✅ Keep the format identical using native tokens
+      notificationTitle: "👑 Hit: {steps} of {goal} steps!",
     });
   } catch (e) {
     console.log("Failed to update native target:", e);

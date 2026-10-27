@@ -47,7 +47,12 @@ export default function ForgotPassword() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Reset Password</Text>
+            {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+      <View style={styles.pageHeaderBlock}>
+        <MaterialCommunityIcons name="lock-reset" size={40} color="#e74c3c" />
+        <Text style={styles.pageHeaderTitle}>Reset Password</Text>
+        <Text style={styles.pageHeaderSubtitle}>Enter your email to receive an OTP.</Text>
+      </View>
 
       <TextInput
         style={styles.input}
@@ -69,6 +74,24 @@ export default function ForgotPassword() {
 
 const styles = StyleSheet.create({
   container:{flex:1,padding:25,justifyContent:'center',backgroundColor:'#f9f9f9'},
+    pageHeaderBlock: {
+    alignItems: "center",
+    marginBottom: 30,
+  },
+  pageHeaderTitle: {
+    fontSize: 26,
+    fontWeight: "800",
+    color: "#2C3E50",
+    marginTop: 10,
+    letterSpacing: -0.5,
+  },
+  pageHeaderSubtitle: {
+    fontSize: 14,
+    color: "#64748B",
+    marginTop: 4,
+    fontWeight: "500",
+    textAlign: "center",
+  },
   title:{fontSize:24,fontWeight:'bold',marginBottom:20,textAlign:'center',color:'#333'},
   input:{backgroundColor:'#fff',padding:15,borderRadius:10,marginBottom:15,elevation:2,color:'#000',borderWidth:1,borderColor:'#eee'},
   button:{backgroundColor:'#e74c3c',padding:16,borderRadius:10,alignItems:'center'},
