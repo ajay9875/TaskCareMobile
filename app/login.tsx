@@ -62,6 +62,13 @@ export default function Login() {
       const data = await response.json();
 
       if (data.status === "success") {
+
+        // ✅ ADD THIS: Tell the notification to update the target right after login
+        const cachedTarget = await AsyncStorage.getItem("@taskcare360_cached_target");
+        if (cachedTarget) {
+           await updateNativeTarget(parseInt(cachedTarget, 10));
+        }
+        
         // ✅ 1. Navigate IMMEDIATELY — user shouldn't wait for push registration
         router.replace("/dashboard");
 

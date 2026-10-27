@@ -5,7 +5,7 @@ import * as BackgroundFetch from "expo-background-fetch";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import {
-  PermissionStatus, // ✅ Add this
+  PermissionStatus,
   getPermissionsAsync,
   getTodayStepCountAsync,
   isAvailableAsync,
@@ -23,6 +23,8 @@ import {
   Linking,
   Platform,
 } from "react-native";
+
+import StepTracker from "react-native-step-tracker-pro"; // ✅ ONLY ADDED THIS
 
 // ─── Constants ───────────────────────────────────────────────
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -46,7 +48,7 @@ const RETRY_INTERVAL_MS = 30000;
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
-let isRecovering = false; // ✅ NEW: Prevents step doubling from race conditions
+let isRecovering = false;
 let debounceTimer: any = null;
 let retryTimer: any = null;
 let netListenerAttached = false;
@@ -106,18 +108,15 @@ export const readActiveMode = async (): Promise<"walking" | "treadmill"> => {
 };
 
 // ─── Enqueue steps ───────────────────────────────────────────
-// ✅ 1. Add this variable at the top of stepTracker.ts
 let lastEnqueuedDelta = 0;
 let lastEnqueuedTime = 0;
 
-// ✅ 2. Update enqueueSteps to prevent double-queueing
 export const enqueueSteps = async (
   delta: number,
   mode: "walking" | "treadmill",
 ) => {
   if (!delta || delta <= 0) return;
 
-  // Prevent duplicate enqueueing within 2 seconds
   const now = Date.now();
   if (delta === lastEnqueuedDelta && now - lastEnqueuedTime < 2000) {
     console.log(`[stepTracker] Blocked duplicate enqueue of ${delta} steps`);
@@ -245,7 +244,6 @@ export const scheduleFlush = () => {
 };
 
 // ─── Core: read pedometer and compute a delta ────────────────
-// ✅ 1. Update readPedometerDelta to lock the AsyncStorage write
 const readPedometerDelta = async (): Promise<{
   delta: number;
   current: number;
@@ -273,7 +271,6 @@ const readPedometerDelta = async (): Promise<{
     const delta = todaySteps - lastSynced;
 
     if (delta > 0) {
-      // ✅ UPDATE the baseline immediately so concurrent tasks see the new value
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
     }
 
@@ -283,7 +280,6 @@ const readPedometerDelta = async (): Promise<{
   }
 };
 
-// ✅ 2. Update recoverMissedSteps to drop the lock immediately
 export const recoverMissedSteps = async () => {
   if (isRecovering) return;
   isRecovering = true;
@@ -293,20 +289,21 @@ export const recoverMissedSteps = async () => {
     if (!result || result.delta <= 0) return;
 
     const mode = await readActiveMode();
-    
-    // Enqueue the steps
     await enqueueSteps(result.delta, mode);
+
+    // ✅ Force the title to stay exactly as you want it
+    try {
+      await StepTracker.updateConfig({
+        notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+      });
+    } catch (e) {}
 
     DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
       delta: result.delta,
       mode,
     });
-
-    // ✅ Flush immediately, do not wait for the debounce timer in background
     await flushQueue();
-    
   } finally {
-    // ✅ Release the lock EXACTLY when done
     isRecovering = false;
   }
 };
@@ -410,7 +407,6 @@ try {
   console.log("[stepTracker] background-fetch defineTask failed:", e);
 }
 
-// ─── Register background fetch task ─────────────────────────
 const ensureBackgroundFetch = async () => {
   if (backgroundFetchRegistered) return;
 
@@ -478,13 +474,11 @@ const attachAppStateListener = () => {
       startForegroundPoll();
     } else if (next === "background" || next === "inactive") {
       stopForegroundPoll();
-      //await recoverMissedSteps().catch(() => {});
       await flushQueue().catch(() => {});
     }
   });
 };
 
-// 2. Update this function to include the physical activity check
 const ensureBackgroundStepTracking = async () => {
   if (backgroundTaskRegistered) return;
 
@@ -492,15 +486,12 @@ const ensureBackgroundStepTracking = async () => {
     const bgAvailable = await isBackgroundAvailableAsync();
     if (!bgAvailable) return;
 
-    // 1. Request Foreground Physical Activity Permission first
     const existing = await getPermissionsAsync();
     if (existing.status !== PermissionStatus.GRANTED) {
       await requestPermissionsAsync();
-      // ✅ Wait 1 second so Android doesn't block the next prompt
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
-    // 2. Then request the Background Health Connect Permission
     await requestBackgroundPermissionsAsync();
 
     const alreadyRegistered =
@@ -514,6 +505,59 @@ const ensureBackgroundStepTracking = async () => {
   }
 };
 
+// ✅ ADDED: Starts the foreground service for the sticky notification
+// ✅ 1. Update the init function to read the target dynamically on boot
+const initLiveNotificationTracker = async () => {
+  try {
+    const cachedTarget = await AsyncStorage.getItem(
+      "@taskcare360_cached_target",
+    );
+    const target = cachedTarget ? parseInt(cachedTarget, 10) : 5000;
+
+    await StepTracker.initialize({
+      height: 175,
+      weight: 75,
+      dailyGoal: target,
+      historyRetentionDays: 31,
+      // ✅ Use the native tokens {goal} and {percent} so it formats perfectly
+      notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+      healthConnectEnabled: false,
+    });
+
+    const permissions = await StepTracker.requestPermissions();
+    if (permissions && permissions.allGranted) {
+      await StepTracker.startTracking();
+
+      // ✅ Force the library to apply your exact title format
+      await StepTracker.updateConfig({
+        notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+      });
+    }
+  } catch (e) {
+    console.log("Live Notification Tracker Init Error:", e);
+  }
+};
+
+// ✅ 2. Add this export so steps.tsx can call it when target changes
+export const updateNativeTarget = async (newTarget: number) => {
+  try {
+    await StepTracker.updateConfig({
+      dailyGoal: newTarget,
+        // ✅ Keep the format identical using native tokens
+        notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+    });
+  } catch (e) {
+    console.log("Failed to update native target:", e);
+  }
+};
+
+// ✅ Add this export in utils/stepTracker.ts
+export const forceUpdateNotificationTarget = async () => {
+  const cachedTarget = await AsyncStorage.getItem("@taskcare360_cached_target");
+  const target = cachedTarget ? parseInt(cachedTarget, 10) : 5000;
+  await updateNativeTarget(target);
+};
+
 // 3. Update initStepTracker to include notification permission
 export const initStepTracker = async () => {
   if (initialized) return;
@@ -523,16 +567,15 @@ export const initStepTracker = async () => {
     return;
   }
 
-  // ✅ Request Notification Permission First
   await handleNotificationPermission();
-
   attachNetworkListener();
   attachAppStateListener();
 
-  // ✅ This now triggers BOTH Physical Activity and Health Connect prompts
   await ensureBackgroundStepTracking();
-
   await ensureBackgroundFetch();
+
+  // ✅ START THE PERSISTENT STICKY NOTIFICATION HERE
+  await initLiveNotificationTracker();
 
   await recoverMissedSteps();
   await flushQueue();
@@ -540,19 +583,24 @@ export const initStepTracker = async () => {
   startForegroundPoll();
 };
 
-// ✅ ADD THIS NEW EXPORT at the bottom of the file
 export const requestNotificationPermission = async () => {
   await handleNotificationPermission();
 };
 
 // ─── Logout hook ─────────────────────────────────────────────
-export const stopStepTracker = () => {
+export const stopStepTracker = async () => {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
   stopRetryTimer();
   stopForegroundPoll();
+
+  // ✅ STOP THE PERSISTENT NOTIFICATION
+  try {
+    await StepTracker.stopTracking();
+  } catch (e) {}
+
   initialized = false;
 };
 

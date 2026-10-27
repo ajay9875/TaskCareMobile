@@ -6888,6 +6888,11 @@ react-native-screens@~4.23.0:
     react-freeze "^1.0.0"
     warn-once "^0.1.0"
 
+react-native-step-tracker-pro@^2.7.1:
+  version "2.7.1"
+  resolved "https://registry.yarnpkg.com/react-native-step-tracker-pro/-/react-native-step-tracker-pro-2.7.1.tgz#2deb4d3a432b13196d2b6f4aa68186ec82e7f3a9"
+  integrity sha512-JKeu8/0bX3Sg5tt8o40uS+cRHlj1S+TRPj1mmMeWy8T+uGg6/3Dy11AZY8EHu1wGpPshN1dfG/qLfdx6uGHegw==
+
 react-native-svg@15.15.3:
   version "15.15.3"
   resolved "https://registry.npmjs.org/react-native-svg/-/react-native-svg-15.15.3.tgz"

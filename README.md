@@ -72,6 +72,13 @@ npx expo start --android --go
 
 npx expo prebuild --clean
 npx expo prebuild --platform android
+npx expo prebuild --clean
+
+# or use below
+
+cd android
+.\gradlew generateCodegenArtifactsFromSchema
+cd ..
 eas build --platform android --profile preview
 
 # 3. To push only new changes to the EAS which will be affecting in the user app by updating manually from downloaded app before

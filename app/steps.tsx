@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { updateNativeTarget } from "../utils/stepTracker";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
@@ -215,6 +216,9 @@ export default function StepsScreen() {
           String(data.target_steps),
         );
 
+        // ✅ ADD THIS: Push the freshly fetched target to the native notification
+        await updateNativeTarget(data.target_steps);
+
         // ✅ Clear the local queue if the DB has already caught up
         // This prevents double-counting when opening the app
         const { getPendingQueue, flushQueue } = require("../utils/stepTracker");
@@ -295,10 +299,16 @@ export default function StepsScreen() {
 
       if (data.status === "success") {
         setTargetSteps(parsedGoal);
+        
+        // ✅ 1. Save to AsyncStorage for the next boot
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
           String(parsedGoal),
         );
+
+        // ✅ 2. Hot-swap the native notification string immediately!
+        await updateNativeTarget(parsedGoal);
+
         setModalVisible(false);
       } else {
         Alert.alert("Error", data.error || "Failed to update target goal.");
@@ -313,6 +323,7 @@ export default function StepsScreen() {
       setUpdatingGoal(false);
     }
   };
+
 
   useEffect(() => {
     handlePermissionCheck();

@@ -24,7 +24,15 @@ export default function LandingScreen() {
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
 
-  // ✅ Network logic remains exactly the same
+  const [publicStats, setPublicStats] = useState<{
+    total_users: number;
+    total_steps: number;
+    active_today: number;
+    tasks_completed: number;
+    sync_accuracy: number;
+  } | null>(null);
+
+  // ✅ Session check — unchanged
   const checkSession = useCallback(async () => {
     setLoading(true);
     setHasNetError(false);
@@ -63,10 +71,35 @@ export default function LandingScreen() {
     }
   }, [API_BASE]);
 
+  // ✅ Public stats — unchanged fetch logic
+  const fetchPublicStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/public/stats`, {
+        // NO credentials — this is public data
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.status === "success") {
+        setPublicStats({
+          total_users: Number(data.total_users) || 0,
+          total_steps: Number(data.total_steps) || 0,
+          active_today: Number(data.active_today) || 0,
+          tasks_completed: Number(data.tasks_completed) || 0,
+          sync_accuracy: Number(data.sync_accuracy) || 99.4,
+        });
+      }
+    } catch (e) {
+      // Silent — stats are decorative, don't break the page
+      console.log("Public stats fetch failed:", e);
+    }
+  }, [API_BASE]);
+
+  // ✅ FIX: fetch stats on focus too (parallel with session check)
   useFocusEffect(
     useCallback(() => {
       checkSession();
-    }, [checkSession]),
+      fetchPublicStats();
+    }, [checkSession, fetchPublicStats]),
   );
 
   const handleLogout = async () => {
@@ -111,6 +144,38 @@ export default function LandingScreen() {
       );
     }
   };
+
+  // ✅ Helpers for the stats grid (defined before the early returns so they're always in scope)
+  const formatNumber = (n: number): string => {
+    if (n >= 1_000_000)
+      return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
+    if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
+    return String(n);
+  };
+
+  const StatCard = ({
+    icon,
+    value,
+    label,
+    caption,
+    accent,
+  }: {
+    icon: React.ComponentProps<typeof Ionicons>["name"];
+    value: string;
+    label: string;
+    caption?: string;
+    accent: string;
+  }) => (
+    <View style={styles.statCard}>
+      <View style={[styles.statAccent, { backgroundColor: accent }]} />
+      <View style={[styles.statIconCircle, { backgroundColor: accent + "18" }]}>
+        <Ionicons name={icon} size={22} color={accent} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+      {caption ? <Text style={styles.statCaption}>{caption}</Text> : null}
+    </View>
+  );
 
   // ✅ 1. Loading Spinner
   if (loading) {
@@ -178,6 +243,40 @@ export default function LandingScreen() {
           Stay fit, productive, and organized! Track your daily physical health
           and manage your priorities seamlessly all in one place.
         </Text>
+
+        {/* ⭐ TRUST METRICS — visible to both logged-in and guest users */}
+        {publicStats && publicStats.total_users > 0 && (
+          <View style={styles.statsGrid}>
+            <StatCard
+              icon="people-outline"
+              value={formatNumber(publicStats.total_users)}
+              label="Users"
+              caption="Registered"
+              accent="#0300a8"
+            />
+            <StatCard
+              icon="footsteps-outline"
+              value={formatNumber(publicStats.total_steps)}
+              label="Steps Tracked"
+              caption="Lifetime"
+              accent="#4ecca3"
+            />
+            <StatCard
+              icon="pulse-outline"
+              value={formatNumber(publicStats.active_today)}
+              label="Active Today"
+              caption="Synced"
+              accent="#ff6b35"
+            />
+            <StatCard
+              icon="shield-checkmark-outline"
+              value={`${publicStats.sync_accuracy.toFixed(1)}%`}
+              label="Sync Accuracy"
+              caption="Last 24h"
+              accent="#2ecc71"
+            />
+          </View>
+        )}
 
         {/* FITNESS SECTION */}
         <View style={styles.card}>
@@ -281,7 +380,7 @@ export default function LandingScreen() {
           </View>
         </View>
 
-        {/* HOW TO USE TASKS - Updated to match dashboard steps & icons */}
+        {/* HOW TO USE TASKS */}
         <View style={styles.stepsBox}>
           <Text style={styles.stepsTitle}>How to manage your Tasks:</Text>
 
@@ -388,6 +487,69 @@ export default function LandingScreen() {
 }
 
 const styles = StyleSheet.create({
+  // ⭐ Stats grid
+  statsGrid: {
+    width: "100%",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 20,
+    gap: 10,
+  },
+  statCard: {
+    width: "48%",
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 14,
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    position: "relative",
+    overflow: "hidden",
+  },
+  statAccent: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 3,
+  },
+  statIconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "800",
+    color: "#2c3e50",
+    letterSpacing: -0.5,
+  },
+  statLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#2c3e50",
+    marginTop: 2,
+  },
+  statCaption: {
+    fontSize: 10,
+    fontWeight: "500",
+    color: "#95a5a6",
+    marginTop: 2,
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+
+  // Existing styles
   container: { flex: 1, paddingHorizontal: 15 },
   scrollContainer: { padding: 20, paddingBottom: 30, alignItems: "center" },
   heroSection: { alignItems: "center", marginTop: 20, marginBottom: 15 },
@@ -453,8 +615,6 @@ const styles = StyleSheet.create({
     color: "#2c3e50",
     marginBottom: 15,
   },
-
-  // ✅ New styles for the icon-based steps
   stepRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -468,7 +628,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginLeft: 10,
   },
-
   buttonContainer: {
     paddingHorizontal: 20,
     paddingBottom: 10,

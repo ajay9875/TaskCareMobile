@@ -185,7 +185,7 @@ export default function Layout() {
           <Stack.Screen
             name="index"
             options={{
-              title: "Welcome to TaskCare360",
+              title: "TaskCare360",
               headerLeft: () => null,
               headerBackVisible: false,
               gestureEnabled: false,
