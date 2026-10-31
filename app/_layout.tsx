@@ -255,7 +255,7 @@ function MainLayout() {
           <NavItem icon="bar-chart" label="History" path="/history" />
           <NavItem
             icon="cash"
-            label="Budget Wisely"
+            label="Budget"
             onPress={() =>
               Linking.openURL("https://budgetwisely.pythonanywhere.com/")
             }

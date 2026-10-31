@@ -9,7 +9,7 @@ import {
   requestPermissionsAsync,
 } from "expo-pedometer";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -687,8 +687,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, paddingHorizontal: 15 },
   pageHeaderBlock: {
     alignItems: "center",
-    marginBottom: 15,
-    marginTop: 5,
+    marginTop: 0, // ✅ Changed from 5 to 0
+    marginBottom: 10, // ✅ Changed from 15 to 10
   },
   pageHeaderTitle: {
     fontSize: 24,
@@ -704,7 +704,6 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   header: {
-    marginTop: 15,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",

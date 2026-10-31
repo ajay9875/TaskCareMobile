@@ -2,8 +2,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
-import AuthDialog from "../components/AuthDialog";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import AuthDialog from "../components/AuthDialog";
 import { useAuth } from "../context/AuthContext";
 import { stopStepTracker } from "../utils/stepTracker";
 
@@ -234,35 +234,116 @@ export default function LandingScreen() {
           and manage your priorities seamlessly all in one place.
         </Text>
 
+        {/* ⭐ TRUST METRICS */}
         <View style={styles.statsGrid}>
-          <StatCard
-            icon="briefcase-outline"
-            value={formatNumber(publicStats?.tasks_handled || 0)}
-            label="Tasks Managed"
-            caption="Lifetime"
-            accent="#e67e22"
-          />
-          <StatCard
-            icon="footsteps-outline"
-            value={formatNumber(publicStats?.total_steps || 0)}
-            label="Steps"
-            caption="Tracked"
-            accent="#4ecca3"
-          />
-          <StatCard
-            icon="people-outline"
-            value={formatNumber(publicStats?.total_users || 0)}
-            label="Users"
-            caption="Registered"
-            accent="#0300a8"
-          />
-          <StatCard
-            icon="shield-checkmark"
-            value="100%"
-            label="Safe & Secure"
-            caption="Encrypted"
-            accent="#2ecc71"
-          />
+          {/* Only render if value > 0 */}
+          {publicStats?.tasks_handled > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                publicStats?.total_steps === 0 &&
+                  publicStats?.total_users === 0 &&
+                  styles.statCardFullWidth,
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#e67e22" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  { backgroundColor: "#e67e22" + "18" },
+                ]}
+              >
+                <Ionicons name="briefcase-outline" size={22} color="#e67e22" />
+              </View>
+              <Text style={styles.statValue}>
+                {formatNumber(publicStats.tasks_handled)}
+              </Text>
+              <Text style={styles.statLabel}>Tasks Managed</Text>
+              <Text style={styles.statCaption}>Lifetime</Text>
+            </View>
+          )}
+
+          {publicStats?.total_steps > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                !publicStats?.tasks_handled &&
+                  publicStats?.total_users === 0 &&
+                  styles.statCardFullWidth,
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#4ecca3" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  { backgroundColor: "#4ecca3" + "18" },
+                ]}
+              >
+                <Ionicons name="footsteps-outline" size={22} color="#4ecca3" />
+              </View>
+              <Text style={styles.statValue}>
+                {formatNumber(publicStats.total_steps)}
+              </Text>
+              <Text style={styles.statLabel}>Steps</Text>
+              <Text style={styles.statCaption}>Tracked</Text>
+            </View>
+          )}
+
+          {publicStats?.total_users > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                !publicStats?.tasks_handled &&
+                  !publicStats?.total_steps &&
+                  styles.statCardFullWidth,
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#0300a8" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  { backgroundColor: "#0300a8" + "18" },
+                ]}
+              >
+                <Ionicons name="people-outline" size={22} color="#0300a8" />
+              </View>
+              <Text style={styles.statValue}>
+                {formatNumber(publicStats.total_users)}
+              </Text>
+              <Text style={styles.statLabel}>Users</Text>
+              <Text style={styles.statCaption}>Registered</Text>
+            </View>
+          )}
+
+          {/* ✅ Safe & Secure is always visible */}
+          <View
+            style={[
+              styles.statCard,
+              !publicStats?.tasks_handled &&
+                !publicStats?.total_steps &&
+                !publicStats?.total_users &&
+                styles.statCardFullWidth,
+            ]}
+          >
+            <View style={[styles.statAccent, { backgroundColor: "#2ecc71" }]} />
+            <View
+              style={[
+                styles.statIconCircle,
+                { backgroundColor: "#2ecc71" + "18" },
+              ]}
+            >
+              <Ionicons name="shield-checkmark" size={22} color="#2ecc71" />
+            </View>
+            <Text style={styles.statValue}>100%</Text>
+            <Text style={styles.statLabel}>Safe & Secure</Text>
+            <Text style={styles.statCaption}>Encrypted</Text>
+          </View>
         </View>
 
         <View style={styles.card}>
@@ -657,10 +738,10 @@ export default function LandingScreen() {
           </View>
         </View>
       </Modal>
-            {/* ✅ REPLACED MODAL WITH REUSABLE COMPONENT */}
-      <AuthDialog 
-        visible={isGuestDialogVisible} 
-        onClose={() => setGuestDialogVisible(false)} 
+      {/* ✅ REPLACED MODAL WITH REUSABLE COMPONENT */}
+      <AuthDialog
+        visible={isGuestDialogVisible}
+        onClose={() => setGuestDialogVisible(false)}
       />
     </SafeAreaView>
   );
@@ -716,6 +797,11 @@ const styles = StyleSheet.create({
     elevation: 2,
     position: "relative",
     overflow: "hidden",
+  },
+  statCardFullWidth: {
+    width: "100%", // ✅ Takes up the entire row
+    paddingVertical: 30, // Extra padding to look nice and big
+    alignItems: "center",
   },
   statValue: {
     fontSize: 26, // Slightly bigger number
