@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -126,12 +126,17 @@ export default function Login() {
 
   return (
     <View style={styles.container}>
-
       {/* ✅ ADD THIS PROFESSIONAL HEADER */}
       <View style={styles.pageHeaderBlock}>
-        <MaterialCommunityIcons name="shield-account" size={40} color="#3498db" />
+        <MaterialCommunityIcons
+          name="shield-account"
+          size={40}
+          color="#3498db"
+        />
         <Text style={styles.pageHeaderTitle}>Welcome Back</Text>
-        <Text style={styles.pageHeaderSubtitle}>Sign in to continue your progress.</Text>
+        <Text style={styles.pageHeaderSubtitle}>
+          Sign in to continue your progress.
+        </Text>
       </View>
 
       <TextInput
@@ -199,7 +204,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#faf3f3",
   },
-    pageHeaderBlock: {
+  pageHeaderBlock: {
     alignItems: "center",
     marginBottom: 30,
   },

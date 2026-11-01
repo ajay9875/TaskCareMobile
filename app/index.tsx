@@ -31,11 +31,17 @@ export default function LandingScreen() {
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
   const [isProfileModalVisible, setProfileModalVisible] = useState(false);
 
-  const [publicStats, setPublicStats] = useState<{
-    total_users: number;
-    total_steps: number;
-    tasks_handled: number;
-  } | null>(null);
+// AFTER
+const [publicStats, setPublicStats] = useState<{
+  total_users: number;
+  total_steps: number;
+  tasks_handled: number;
+  display: {
+    total_users: string;
+    total_steps: string;
+    tasks_handled: string;
+  };
+} | null>(null);
 
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [editName, setEditName] = useState("");
@@ -50,10 +56,16 @@ export default function LandingScreen() {
       if (!res.ok) return;
       const data = await res.json();
       if (data.status === "success") {
+        // AFTER
         setPublicStats({
           total_users: Number(data.total_users) || 0,
           total_steps: Number(data.total_steps) || 0,
           tasks_handled: Number(data.tasks_handled) || 0,
+          display: {
+            total_users:   data.display?.total_users   ?? String(data.total_users   ?? 0),
+            total_steps:   data.display?.total_steps   ?? String(data.total_steps   ?? 0),
+            tasks_handled: data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
+          },
         });
       }
     } catch (e) {}
@@ -148,13 +160,6 @@ export default function LandingScreen() {
         ],
       );
     }
-  };
-
-  const formatNumber = (n: number): string => {
-    if (n >= 1_000_000)
-      return (n / 1_000_000).toFixed(1).replace(/\.0$/, "") + "M";
-    if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, "") + "K";
-    return String(n);
   };
 
   const StatCard = ({ icon, value, label, caption, accent }: any) => (
@@ -258,7 +263,7 @@ export default function LandingScreen() {
                 <Ionicons name="briefcase-outline" size={22} color="#e67e22" />
               </View>
               <Text style={styles.statValue}>
-                {formatNumber(publicStats.tasks_handled)}
+                {publicStats.display.tasks_handled}
               </Text>
               <Text style={styles.statLabel}>Tasks Managed</Text>
               <Text style={styles.statCaption}>Lifetime</Text>
@@ -286,7 +291,7 @@ export default function LandingScreen() {
                 <Ionicons name="footsteps-outline" size={22} color="#4ecca3" />
               </View>
               <Text style={styles.statValue}>
-                {formatNumber(publicStats.total_steps)}
+                {publicStats.display.total_steps}
               </Text>
               <Text style={styles.statLabel}>Steps</Text>
               <Text style={styles.statCaption}>Tracked</Text>
@@ -314,7 +319,7 @@ export default function LandingScreen() {
                 <Ionicons name="people-outline" size={22} color="#0300a8" />
               </View>
               <Text style={styles.statValue}>
-                {formatNumber(publicStats.total_users)}
+                {publicStats.display.total_users}
               </Text>
               <Text style={styles.statLabel}>Users</Text>
               <Text style={styles.statCaption}>Registered</Text>
