@@ -270,11 +270,18 @@ const readPedometerDelta = async (): Promise<{
     const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
     const delta = todaySteps - lastSynced;
 
+    // Counter went backwards (device reboot, pedometer reset, OS data clear).
+    // Re-baseline so we don't lose the rest of the day's steps.
+    if (delta < 0) {
+      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
+      return { delta: 0, current: todaySteps };
+    }
+
     if (delta > 0) {
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
     }
 
-    return { delta: Math.max(0, delta), current: todaySteps };
+    return { delta, current: todaySteps };
   } catch (e) {
     return null;
   }

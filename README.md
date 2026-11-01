@@ -88,6 +88,7 @@ eas build --platform android --profile preview
 #eas update:configure
 npx expo prebuild --platform android
 eas update --branch preview --message "Updated xyz"
+eas update --channel preview --message "Updated XYZ"
 
 # after runing above command please select environment according to deployed your code before()
 

@@ -113,11 +113,16 @@ export default function HistoryScreen() {
             <Text style={styles.summaryTitleText}>
               {history.length === 1
                 ? "TODAY'S SUMMARY"
-                : `LIFETIME PERFORMANCE (${summary?.days_tracked ?? history.length} days)`}
+                : "LIFETIME PERFORMANCE"}
             </Text>
             <Text style={styles.summaryTitleSubtext}>
               Your Complete Fitness Journey
             </Text>
+            {history.length > 1 && (
+              <Text style={styles.summaryDaysText}>
+                {summary?.days_tracked ?? history.length} days tracked
+              </Text>
+            )}
           </View>
         </View>
 
@@ -353,11 +358,10 @@ export default function HistoryScreen() {
               inActiveStrokeOpacity={1}
               inActiveStrokeWidth={6}
               activeStrokeWidth={6}
-              title={`${percentage.toFixed(0)}%`}
-              titleStyle={{ fontSize: 16, fontWeight: "800", color: "#ffffff" }}
-              showProgressValue={false}
+              showProgressValue={true}                              // ← turn this ON
+              progressValueStyle={{ fontSize: 16, fontWeight: "800", color: "#ffffff" }}  // ← style the center number
+              progressFormatter={(value) => `${Math.round(value)}%`}  // ← append %
             />
-
             <View style={styles.imageSeparatorLine} />
 
             <View style={styles.imageMetricsArea}>
@@ -498,7 +502,13 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   listPadding: { paddingHorizontal: 16, paddingBottom: 30, flexGrow: 1 },
-
+  summaryDaysText: {
+    color: "#4ecca3",
+    fontSize: 11,
+    marginTop: 2,
+    fontWeight: "700",
+    letterSpacing: 0.3,
+  },
   /* 30-Day Overall Summary Block */
   summaryCard: {
     backgroundColor: "#1a1a1a",
