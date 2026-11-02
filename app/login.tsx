@@ -30,8 +30,8 @@ export default function Login() {
   useEffect(() => {
     if (params.sessionExpired === "true") {
       Alert.alert(
-        "Session Expired",
-        "Session expired or Logged out successfully. Please login again.",
+        "Access Denied",
+        "Authentication Required. Please sign in to access this section.",
         [
           {
             text: "OK",

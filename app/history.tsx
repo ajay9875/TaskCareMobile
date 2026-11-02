@@ -2,6 +2,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
+import Svg, { Circle } from "react-native-svg";
 import {
   ActivityIndicator,
   Dimensions,
@@ -11,9 +12,52 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import CircularProgress from "react-native-circular-progress-indicator";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
+
+const CustomProgressRing = ({ percentage }) => {
+  const radius = 42;
+  const strokeWidth = 6;
+  const circumference = 2 * Math.PI * radius;
+  
+  // Safely calculate offset (prevent NaN)
+  const safePercent = isNaN(percentage) ? 0 : Math.min(100, Math.max(0, percentage));
+  const strokeDashoffset = circumference - (safePercent / 100) * circumference;
+
+  return (
+    <View style={{ width: 100, height: 100, alignItems: "center", justifyContent: "center", marginVertical: 10 }}>
+      <Svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: [{ rotate: "-90deg" }] }}>
+        {/* Background Circle */}
+        <Circle
+          cx="50"
+          cy="50"
+          r={radius}
+          stroke="#ffffff15"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+        {/* Progress Circle */}
+        <Circle
+          cx="50"
+          cy="50"
+          r={radius}
+          stroke="#4ecca3"
+          strokeWidth={strokeWidth}
+          fill="none"
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+        />
+      </Svg>
+      {/* Text in the center */}
+      <View style={{ position: "absolute", alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ fontSize: 18, fontWeight: "800", color: "#ffffff" }}>
+          {Math.round(safePercent)}%
+        </Text>
+      </View>
+    </View>
+  );
+};
 
 export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
@@ -41,7 +85,7 @@ export default function HistoryScreen() {
 
       if (dataRes.status === 401) {
         clearTimeout(timeoutId);
-        return router.replace("/login");
+        return router.replace("/login?sessionExpired=true"); // ✅ Added parameter
       }
       if (!dataRes.ok) throw new Error("Target endpoint error");
 
@@ -62,7 +106,7 @@ export default function HistoryScreen() {
 
       if (res.status === 401) {
         clearTimeout(timeoutId);
-        return router.replace("/login");
+        return router.replace("/login?sessionExpired=true"); // ✅ Added parameter
       }
       if (!res.ok) throw new Error("Performance endpoint error");
 
@@ -346,22 +390,11 @@ export default function HistoryScreen() {
             </View>
           </View>
 
-          {/* Right Progress Ring */}
+          {/* Right Progress Area (Temporarily showing simple text instead of the crashing ring) */}
+          {/* Right Progress Area (Safe Custom SVG Ring) */}
           <View style={styles.imageRingContainer}>
-            <CircularProgress
-              value={percentage}
-              radius={42}
-              duration={1000}
-              progressValueColor={"#ffffff"}
-              activeStrokeColor={"#4ecca3"}
-              inActiveStrokeColor={"#ffffff15"}
-              inActiveStrokeOpacity={1}
-              inActiveStrokeWidth={6}
-              activeStrokeWidth={6}
-              showProgressValue={true}                              // ← turn this ON
-              progressValueStyle={{ fontSize: 16, fontWeight: "800", color: "#ffffff" }}  // ← style the center number
-              progressFormatter={(value) => `${Math.round(value)}%`}  // ← append %
-            />
+            <CustomProgressRing percentage={percentage} />
+            
             <View style={styles.imageSeparatorLine} />
 
             <View style={styles.imageMetricsArea}>
@@ -501,7 +534,7 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 10,
   },
-  listPadding: { paddingHorizontal: 16, paddingBottom: 30, flexGrow: 1 },
+listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
   summaryDaysText: {
     color: "#4ecca3",
     fontSize: 11,

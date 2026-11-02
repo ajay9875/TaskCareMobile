@@ -1,9 +1,11 @@
 // app/_layout.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Stack, useRouter } from "expo-router";
 import * as ExpoSplashScreen from "expo-splash-screen";
-import React, { useEffect, useRef, useState } from "react";
+import * as Updates from "expo-updates";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -107,6 +109,30 @@ function MainLayout() {
   }, []);
 
   const handleSplashFinish = async () => {
+    try {
+      const justReloaded = await AsyncStorage.getItem(
+        "@taskcare360_just_reloaded",
+      );
+      if (justReloaded === "true") {
+        await AsyncStorage.removeItem("@taskcare360_just_reloaded");
+      } else {
+        try {
+          const update = await Updates.checkForUpdateAsync();
+          if (update.isAvailable) {
+            await AsyncStorage.setItem("@taskcare360_just_reloaded", "true");
+            await Updates.fetchUpdateAsync();
+            await Updates.reloadAsync();
+            return;
+          }
+        } catch (e) {
+          console.log("OTA Update check failed:", e);
+        }
+      }
+    } catch (e) {
+      console.log("AsyncStorage OTA guard failed:", e);
+    }
+
+    // Normal startup (always runs)
     setIsAppReady(true);
     setTimeout(async () => {
       try {

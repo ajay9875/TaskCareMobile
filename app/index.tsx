@@ -1,52 +1,40 @@
 // app/index.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import * as Clipboard from "expo-clipboard";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Linking,
-  Modal,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import AuthDialog from "../components/AuthDialog";
 import { useAuth } from "../context/AuthContext";
-import { stopStepTracker } from "../utils/stepTracker";
 
 export default function LandingScreen() {
   const router = useRouter();
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
-  const { user, isLoggedIn, setUser, checkSession } = useAuth();
+  const { user, isLoggedIn, checkSession } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
-  const [isProfileModalVisible, setProfileModalVisible] = useState(false);
 
-// AFTER
-const [publicStats, setPublicStats] = useState<{
-  total_users: number;
-  total_steps: number;
-  tasks_handled: number;
-  display: {
-    total_users: string;
-    total_steps: string;
-    tasks_handled: string;
-  };
-} | null>(null);
-
-  const [isEditModalVisible, setEditModalVisible] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [updating, setUpdating] = useState(false);
+  // AFTER
+  const [publicStats, setPublicStats] = useState<{
+    total_users: number;
+    total_steps: number;
+    tasks_handled: number;
+    display: {
+      total_users: string;
+      total_steps: string;
+      tasks_handled: string;
+    };
+  } | null>(null);
 
   const fetchPublicStats = useCallback(async () => {
     try {
@@ -62,9 +50,12 @@ const [publicStats, setPublicStats] = useState<{
           total_steps: Number(data.total_steps) || 0,
           tasks_handled: Number(data.tasks_handled) || 0,
           display: {
-            total_users:   data.display?.total_users   ?? String(data.total_users   ?? 0),
-            total_steps:   data.display?.total_steps   ?? String(data.total_steps   ?? 0),
-            tasks_handled: data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
+            total_users:
+              data.display?.total_users ?? String(data.total_users ?? 0),
+            total_steps:
+              data.display?.total_steps ?? String(data.total_steps ?? 0),
+            tasks_handled:
+              data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
           },
         });
       }
@@ -77,101 +68,6 @@ const [publicStats, setPublicStats] = useState<{
       fetchPublicStats();
       setLoading(false);
     }, [checkSession, fetchPublicStats]),
-  );
-
-  const handleLogout = async () => {
-    Alert.alert("Logout", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await stopStepTracker();
-            await fetch(`${API_BASE}/logout`, { credentials: "include" });
-          } catch (e) {
-          } finally {
-            setUser(null);
-            setProfileModalVisible(false);
-          }
-        },
-      },
-    ]);
-  };
-
-  const handleSaveProfile = async () => {
-    if (!editName.trim() || !editEmail.trim()) {
-      Alert.alert("Validation Error", "Name and Email cannot be empty.");
-      return;
-    }
-
-    setUpdating(true);
-    try {
-      const response = await fetch(`${API_BASE}/profile/update`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: editName.trim(),
-          email: editEmail.trim(),
-        }),
-      });
-
-      if (response.status === 401) {
-        setEditModalVisible(false);
-        setProfileModalVisible(false);
-        checkSession();
-        return;
-      }
-
-      const data = await response.json();
-      if (data.status === "success") {
-        setUser({ name: editName.trim(), email: editEmail.trim() });
-        setEditModalVisible(false);
-        Alert.alert("Success", "Profile updated successfully.");
-      } else {
-        Alert.alert("Error", data.message || "Failed to update profile.");
-      }
-    } catch (error) {
-      Alert.alert("Error", "Unable to reach the server.");
-    } finally {
-      setUpdating(false);
-    }
-  };
-
-  const openSupportEmail = async () => {
-    const email = "taskcare360@gmail.com";
-    const mailUrl = `mailto:${email}?subject=${encodeURIComponent("Support Request")}&body=${encodeURIComponent("Hello Support Team,")}`;
-    try {
-      await Linking.openURL(mailUrl);
-    } catch (error) {
-      Alert.alert(
-        "Support Unavailable",
-        "No email client found. Copy our support email?",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Copy Email",
-            onPress: async () => {
-              await Clipboard.setStringAsync(email);
-              Alert.alert("Success", "Email address copied to clipboard!");
-            },
-          },
-        ],
-      );
-    }
-  };
-
-  const StatCard = ({ icon, value, label, caption, accent }: any) => (
-    <View style={styles.statCard}>
-      <View style={[styles.statAccent, { backgroundColor: accent }]} />
-      <View style={[styles.statIconCircle, { backgroundColor: accent + "18" }]}>
-        <Ionicons name={icon} size={22} color={accent} />
-      </View>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-      {caption ? <Text style={styles.statCaption}>{caption}</Text> : null}
-    </View>
   );
 
   if (loading) {
@@ -217,8 +113,6 @@ const [publicStats, setPublicStats] = useState<{
       </SafeAreaView>
     );
   }
-
-  const avatarLetter = user ? user.name.trim().charAt(0).toUpperCase() : "A";
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
@@ -493,21 +387,13 @@ const [publicStats, setPublicStats] = useState<{
 
       <View style={styles.bottomActionContainer}>
         {isLoggedIn ? (
-          <View style={styles.inlineRow}>
-            <TouchableOpacity
-              style={styles.dashboardBtn}
-              onPress={() => router.push("/dashboard")}
-            >
-              <Ionicons name="speedometer-outline" size={20} color="#fff" />
-              <Text style={styles.btnText}>Go to Dashboard</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.logoutBtnSmall}
-              onPress={handleLogout}
-            >
-              <MaterialCommunityIcons name="logout" size={20} color="#fff" />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.dashboardBtn}
+            onPress={() => router.push("/dashboard")}
+          >
+            <Ionicons name="speedometer-outline" size={20} color="#fff" />
+            <Text style={styles.btnText}>Go to Dashboard</Text>
+          </TouchableOpacity>
         ) : (
           <TouchableOpacity
             style={styles.guestLoginBtn}
@@ -519,230 +405,6 @@ const [publicStats, setPublicStats] = useState<{
         )}
       </View>
 
-      <Modal visible={isGuestDialogVisible} animationType="fade" transparent>
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setGuestDialogVisible(false)}
-        >
-          <View style={styles.dialogBox}>
-            <Text style={styles.dialogTitle}>Welcome to TaskCare360</Text>
-            <Text style={styles.dialogSub}>
-              Sign in to sync your steps and tasks.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.dialogPrimaryBtn}
-              onPress={() => {
-                setGuestDialogVisible(false);
-                router.push("/signup");
-              }}
-            >
-              <Ionicons name="person-add-outline" size={20} color="#fff" />
-              <Text style={styles.btnText}>Create Account</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dialogSecondaryBtn}
-              onPress={() => {
-                setGuestDialogVisible(false);
-                router.push("/login");
-              }}
-            >
-              <Ionicons name="log-in-outline" size={20} color="#fff" />
-              <Text style={styles.btnText}>Login</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dialogLinkBtn}
-              onPress={() => {
-                setGuestDialogVisible(false);
-                router.push("/forgot-password");
-              }}
-            >
-              <Ionicons name="key-outline" size={18} color="#e74c3c" />
-              <Text style={styles.dialogLinkText}>Forgot Password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.dialogLinkBtn}
-              onPress={() => {
-                setGuestDialogVisible(false);
-                openSupportEmail();
-              }}
-            >
-              <Ionicons name="help-circle-outline" size={18} color="#3498db" />
-              <Text style={[styles.dialogLinkText, { color: "#3498db" }]}>
-                Contact Support
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal visible={isProfileModalVisible} animationType="slide" transparent>
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setProfileModalVisible(false)}
-        >
-          <View style={styles.profileDialog}>
-            <View style={styles.profileHeader}>
-              <View style={styles.profileAvatarLarge}>
-                <Text style={styles.avatarTextLarge}>{avatarLetter}</Text>
-              </View>
-              <Text style={styles.profileName}>{user?.name}</Text>
-              <Text style={styles.profileSubtitle}>{user?.email}</Text>
-            </View>
-
-            <View style={styles.menuContainer}>
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setEditName(user?.name || "");
-                  setEditEmail(user?.email || "");
-                  setEditModalVisible(true);
-                }}
-              >
-                <View
-                  style={[styles.iconWrapper, { backgroundColor: "#EEF2FF" }]}
-                >
-                  <MaterialCommunityIcons
-                    name="account-edit-outline"
-                    size={22}
-                    color="#4F46E5"
-                  />
-                </View>
-                <Text style={styles.menuText}>Edit Profile</Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={22}
-                  color="#94A3B8"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setProfileModalVisible(false);
-                  router.push("/forgot-password");
-                }}
-              >
-                <View
-                  style={[styles.iconWrapper, { backgroundColor: "#FEF3C7" }]}
-                >
-                  <MaterialCommunityIcons
-                    name="lock-reset"
-                    size={22}
-                    color="#D97706"
-                  />
-                </View>
-                <Text style={styles.menuText}>Reset Password</Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={22}
-                  color="#94A3B8"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItem}
-                onPress={() => {
-                  setProfileModalVisible(false);
-                  openSupportEmail();
-                }}
-              >
-                <View
-                  style={[styles.iconWrapper, { backgroundColor: "#E0F2FE" }]}
-                >
-                  <MaterialCommunityIcons
-                    name="headset"
-                    size={22}
-                    color="#0284C7"
-                  />
-                </View>
-                <Text style={styles.menuText}>Contact Us / Support</Text>
-                <MaterialCommunityIcons
-                  name="chevron-right"
-                  size={22}
-                  color="#94A3B8"
-                />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.menuItemLogout}
-                onPress={handleLogout}
-              >
-                <View
-                  style={[styles.iconWrapper, { backgroundColor: "#FEF2F2" }]}
-                >
-                  <MaterialCommunityIcons
-                    name="logout"
-                    size={22}
-                    color="#DC2626"
-                  />
-                </View>
-                <Text style={styles.menuTextLogout}>Sign Out</Text>
-              </TouchableOpacity>
-            </View>
-
-            <TouchableOpacity
-              style={styles.closeBtn}
-              onPress={() => setProfileModalVisible(false)}
-            >
-              <Text style={styles.closeBtnText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal visible={isEditModalVisible} animationType="fade" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.editDialogBox}>
-            <Text style={styles.dialogTitle}>Edit Profile</Text>
-
-            <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editName}
-              onChangeText={setEditName}
-              placeholder="Enter your name"
-            />
-
-            <Text style={styles.inputLabel}>Email Address</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editEmail}
-              onChangeText={setEditEmail}
-              placeholder="Enter your email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-
-            <View style={styles.editActions}>
-              <TouchableOpacity
-                style={styles.cancelBtn}
-                onPress={() => setEditModalVisible(false)}
-                disabled={updating}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={handleSaveProfile}
-                disabled={updating}
-              >
-                {updating ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
       {/* ✅ REPLACED MODAL WITH REUSABLE COMPONENT */}
       <AuthDialog
         visible={isGuestDialogVisible}
@@ -882,9 +544,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: "#e9ecef",
   },
-  inlineRow: { flexDirection: "row", justifyContent: "space-between", gap: 10 },
   dashboardBtn: {
-    flex: 1,
+    width: "100%", // ✅ Change flex: 1 to width: 100%
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
@@ -892,15 +553,6 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     gap: 6,
-  },
-  logoutBtnSmall: {
-    width: 55,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#dc3545",
-    padding: 14,
-    borderRadius: 10,
   },
   guestLoginBtn: {
     width: "100%",
@@ -913,160 +565,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   btnText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  dialogBox: {
-    width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 24,
-    padding: 24,
-    alignItems: "center",
-  },
-  dialogTitle: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  dialogSub: {
-    fontSize: 14,
-    color: "#64748B",
-    marginBottom: 24,
-    textAlign: "center",
-  },
-  dialogPrimaryBtn: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#2ecc71",
-    padding: 14,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 12,
-  },
-  dialogSecondaryBtn: {
-    width: "100%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#3498db",
-    padding: 14,
-    borderRadius: 12,
-    gap: 8,
-    marginBottom: 12,
-  },
-  dialogLinkBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    gap: 6,
-  },
-  dialogLinkText: { fontSize: 14, fontWeight: "600", color: "#e74c3c" },
-  profileDialog: {
-    width: "100%",
-    backgroundColor: "#F4F7FE",
-    borderRadius: 24,
-    padding: 20,
-  },
-  profileHeader: { alignItems: "center", marginBottom: 20 },
-  profileAvatarLarge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#6200EE",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  avatarTextLarge: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },
-  profileName: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
-  profileSubtitle: { fontSize: 13, color: "#64748B", marginTop: 2 },
-  menuContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    elevation: 2,
-  },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F1F5F9",
-  },
-  menuItemLogout: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 14,
-  },
-  iconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 14,
-  },
-  menuText: { flex: 1, fontSize: 15, fontWeight: "600", color: "#1E293B" },
-  menuTextLogout: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#DC2626",
-  },
-  closeBtn: { marginTop: 16, alignItems: "center" },
-  closeBtnText: { fontSize: 15, fontWeight: "600", color: "#64748B" },
-  editDialogBox: {
-    width: "100%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 24,
-    elevation: 10,
-  },
-  inputLabel: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64748B",
-    marginBottom: 4,
-    marginTop: 8,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    color: "#0F172A",
-    marginBottom: 10,
-  },
-  editActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: "#F1F5F9",
-  },
-  cancelBtnText: { color: "#64748B", fontWeight: "600" },
-  saveBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-    borderRadius: 10,
-    backgroundColor: "#6200EE",
-  },
-  saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
