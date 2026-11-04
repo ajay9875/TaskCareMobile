@@ -24,7 +24,7 @@ import {
   Platform,
 } from "react-native";
 
-import StepTracker from "react-native-step-tracker-pro"; // ✅ ONLY ADDED THIS
+import StepTracker from "react-native-step-tracker-pro";
 
 // ─── Constants ───────────────────────────────────────────────
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -65,6 +65,22 @@ export type StepEvent = {
   delta: number;
   mode: "walking" | "treadmill";
   created_at: number;
+};
+
+// ← NEW: exported so login.tsx can call it after login
+export const getNativeSyncToken = async (): Promise<string | null> => {
+  try {
+    const res = await fetch(`${API_BASE}/steps/native-token`, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.token || null;
+  } catch (e) {
+    console.log("[stepTracker] getNativeSyncToken failed:", e);
+    return null;
+  }
 };
 
 // ─── Queue helpers ───────────────────────────────────────────
@@ -270,8 +286,6 @@ const readPedometerDelta = async (): Promise<{
     const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
     const delta = todaySteps - lastSynced;
 
-    // Counter went backwards (device reboot, pedometer reset, OS data clear).
-    // Re-baseline so we don't lose the rest of the day's steps.
     if (delta < 0) {
       await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
       return { delta: 0, current: todaySteps };
@@ -287,18 +301,62 @@ const readPedometerDelta = async (): Promise<{
   }
 };
 
+// ← NEW: Anti-double-count reconcile (throttled 60s)
+let lastReconcileTime = 0;
+const RECONCILE_MIN_INTERVAL_MS = 60_000; // ← IMPORTANT: 60 seconds, not 5
+
+const reconcileBaselineFromServer = async (): Promise<void> => {
+  const now = Date.now();
+  if (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS) {
+    return;
+  }
+  lastReconcileTime = now;
+
+  try {
+    const res = await fetch(`${API_BASE}/steps/data?mode=walking`, {
+      method: "GET",
+      credentials: "include",
+    });
+    if (!res.ok) return;
+
+    const data = await res.json();
+    const serverTotal = (data.walking_steps || 0) + (data.treadmill_steps || 0);
+
+    const todaySteps = await getTodayStepCountAsync();
+    const cappedBaseline = Math.min(serverTotal, todaySteps);
+
+    const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
+    const lastSyncedLocal = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
+
+    if (cappedBaseline > lastSyncedLocal) {
+      await AsyncStorage.setItem(
+        LAST_SYNCED_COUNT_KEY,
+        cappedBaseline.toString(),
+      );
+      console.log(
+        `[stepTracker] Reconciled baseline: ${lastSyncedLocal} → ${cappedBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
+      );
+    }
+  } catch (e) {
+    console.log("[stepTracker] reconcileBaselineFromServer failed:", e);
+  }
+};
+
+// ─── recoverMissedSteps ──────────────────────────────────────
 export const recoverMissedSteps = async () => {
   if (isRecovering) return;
   isRecovering = true;
 
   try {
+    // ← NEW: reconcile before computing delta
+    await reconcileBaselineFromServer();
+
     const result = await readPedometerDelta();
     if (!result || result.delta <= 0) return;
 
     const mode = await readActiveMode();
     await enqueueSteps(result.delta, mode);
 
-    // ✅ Force the title to stay exactly as you want it
     try {
       await StepTracker.updateConfig({
         notificationTitle: "👑 Hit: {steps} of {goal} steps!",
@@ -476,12 +534,20 @@ const attachAppStateListener = () => {
 
   AppState.addEventListener("change", async (next) => {
     if (next === "active") {
+      // ← NEW: reset throttle so fresh reconcile on resume
+      lastReconcileTime = 0;
       await recoverMissedSteps();
       await flushQueue();
       startForegroundPoll();
     } else if (next === "background" || next === "inactive") {
       stopForegroundPoll();
       await flushQueue().catch(() => {});
+      // ← NEW: trigger native sync immediately instead of waiting 1h
+      try {
+        await StepTracker.syncNow();
+      } catch (e) {
+        console.log("[stepTracker] syncNow failed:", e);
+      }
     }
   });
 };
@@ -512,8 +578,7 @@ const ensureBackgroundStepTracking = async () => {
   }
 };
 
-// ✅ ADDED: Starts the foreground service for the sticky notification
-// ✅ 1. Update the init function to read the target dynamically on boot
+// ─── initLiveNotificationTracker ─────────────────────────────
 const initLiveNotificationTracker = async () => {
   try {
     const cachedTarget = await AsyncStorage.getItem(
@@ -521,13 +586,24 @@ const initLiveNotificationTracker = async () => {
     );
     const target = cachedTarget ? parseInt(cachedTarget, 10) : 5000;
 
+    // ← NEW: fetch token before init
+    const nativeToken = await getNativeSyncToken();
+
     await StepTracker.initialize({
       height: 175,
       weight: 75,
       dailyGoal: target,
       historyRetentionDays: 31,
-      // ✅ Use the native tokens {goal} and {percent} so it formats perfectly
       notificationTitle: "👑 Hit: {steps} of {goal} steps!",
+
+      // ← NEW: remote sync config
+      remoteSyncUrl: `${API_BASE}/steps/sync/native`,
+      remoteSyncHeaders: nativeToken
+        ? { Authorization: `Bearer ${nativeToken}` }
+        : {},
+      remoteSyncAuth: "headers",
+      remoteSyncPayload: "totals",
+
       healthConnectEnabled: false,
     });
 
@@ -535,22 +611,35 @@ const initLiveNotificationTracker = async () => {
     if (permissions && permissions.allGranted) {
       await StepTracker.startTracking();
 
-      // ✅ Force the library to apply your exact title format
       await StepTracker.updateConfig({
         notificationTitle: "👑 Hit: {steps} of {goal} steps!",
       });
+
+      // ← NEW: auto-recover from auth failures
+      try {
+        StepTracker.addListener("syncAuthFailed", async () => {
+          console.log("[stepTracker] syncAuthFailed, refreshing token");
+          const freshToken = await getNativeSyncToken();
+          if (freshToken) {
+            await StepTracker.updateConfig({
+              remoteSyncHeaders: { Authorization: `Bearer ${freshToken}` },
+            });
+            await StepTracker.syncNow();
+          }
+        });
+      } catch (e) {
+        console.log("[stepTracker] Could not attach syncAuthFailed:", e);
+      }
     }
   } catch (e) {
     console.log("Live Notification Tracker Init Error:", e);
   }
 };
 
-// ✅ 2. Add this export so steps.tsx can call it when target changes
 export const updateNativeTarget = async (newTarget: number) => {
   try {
     await StepTracker.updateConfig({
       dailyGoal: newTarget,
-      // ✅ Keep the format identical using native tokens
       notificationTitle: "👑 Hit: {steps} of {goal} steps!",
     });
   } catch (e) {
@@ -558,14 +647,12 @@ export const updateNativeTarget = async (newTarget: number) => {
   }
 };
 
-// ✅ Add this export in utils/stepTracker.ts
 export const forceUpdateNotificationTarget = async () => {
   const cachedTarget = await AsyncStorage.getItem("@taskcare360_cached_target");
   const target = cachedTarget ? parseInt(cachedTarget, 10) : 5000;
   await updateNativeTarget(target);
 };
 
-// 3. Update initStepTracker to include notification permission
 export const initStepTracker = async () => {
   if (initialized) return;
   initialized = true;
@@ -581,7 +668,6 @@ export const initStepTracker = async () => {
   await ensureBackgroundStepTracking();
   await ensureBackgroundFetch();
 
-  // ✅ START THE PERSISTENT STICKY NOTIFICATION HERE
   await initLiveNotificationTracker();
 
   await recoverMissedSteps();
@@ -594,7 +680,6 @@ export const requestNotificationPermission = async () => {
   await handleNotificationPermission();
 };
 
-// ─── Logout hook ─────────────────────────────────────────────
 export const stopStepTracker = async () => {
   if (debounceTimer) {
     clearTimeout(debounceTimer);
@@ -603,7 +688,6 @@ export const stopStepTracker = async () => {
   stopRetryTimer();
   stopForegroundPoll();
 
-  // ✅ STOP THE PERSISTENT NOTIFICATION
   try {
     await StepTracker.stopTracking();
   } catch (e) {}
@@ -611,7 +695,6 @@ export const stopStepTracker = async () => {
   initialized = false;
 };
 
-// ─── Public getters ──────────────────────────────────────────
 export const getPendingQueue = readQueue;
 export const getQueueSize = async (): Promise<number> =>
   (await readQueue()).length;

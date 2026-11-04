@@ -14,7 +14,8 @@ import { useAuth } from "../context/AuthContext"; // ✅ Add this
 import { registerForPushNotifications } from "../utils/pushNotifications";
 // Add these right below the other imports at the top of login.tsx
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { updateNativeTarget } from "../utils/stepTracker";
+import StepTracker from "react-native-step-tracker-pro";
+import { getNativeSyncToken, updateNativeTarget } from "../utils/stepTracker";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -77,6 +78,24 @@ export default function Login() {
 
         // ✅ ADD THIS: Force the global header to update instantly!
         await checkSession();
+
+        // ✅ NEW: Refresh native sync token AFTER login so plugin gets valid Bearer header
+        try {
+          const freshToken = await getNativeSyncToken();
+          if (freshToken) {
+            await StepTracker.updateConfig({
+              remoteSyncHeaders: { Authorization: `Bearer ${freshToken}` },
+            });
+            await StepTracker.syncNow();
+            console.log("[login] ✅ Native sync token refreshed");
+          } else {
+            console.log(
+              "[login] ⚠️ getNativeSyncToken returned null — session not yet active",
+            );
+          }
+        } catch (e) {
+          console.log("[login] ❌ Native token refresh failed:", e);
+        }
 
         // ✅ 1. Navigate IMMEDIATELY — user shouldn't wait for push registration
         router.replace("/dashboard");
