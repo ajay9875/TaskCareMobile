@@ -1,98 +1,110 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+// app/verify_otp.tsx
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useState } from "react";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import LoadingOverlay from "../components/LoadingOverlay";
 
 export default function VerifyOTP() {
-
-  const [otp, setOtp] = useState('');
+  const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
   const router = useRouter();
   const { email } = useLocalSearchParams();
-
-  const API_BASE = process.env.EXPO_PUBLIC_BASE_API; // Fallback to localhost for development
+  const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
   const handleVerify = async () => {
-
     if (otp.length !== 6) {
       return Alert.alert("Invalid OTP", "Enter the 6 digit OTP.");
     }
 
     setLoading(true);
+    const startTime = Date.now(); // ⏱️ START TIMER
 
     try {
-
       const response = await fetch(`${API_BASE}/verify_otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: email,
-          otp: otp.trim()
-        }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp: otp.trim() }),
       });
 
       const result = await response.json();
 
       if (result.status === "success") {
-
-        router.push({
-          pathname: "/reset_password",
-          params: { email: email }
-        });
-
+        router.push({ pathname: "/reset_password", params: { email } });
       } else {
         Alert.alert("Verification Failed", result.message);
       }
-
     } catch (error) {
       Alert.alert("Error", "Network error");
+    } finally {
+      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY (same as reset_password)
+      const elapsedTime = Date.now() - startTime;
+      const minDelay = 2000;
+      const remainingTime = Math.max(0, minDelay - elapsedTime);
+      setTimeout(() => setLoading(false), remainingTime);
     }
-
-    setLoading(false);
   };
 
   return (
-    <View style={styles.container}>
-      {/* ✅ ADD THIS PROFESSIONAL HEADER */}
-      <View style={styles.pageHeaderBlock}>
-        <MaterialCommunityIcons name="shield-check" size={40} color="#2ECC71" />
-        <Text style={styles.pageHeaderTitle}>Verify OTP</Text>
-        <Text style={styles.pageHeaderSubtitle}>Enter the 6-digit code sent to your email.</Text>
-      </View>
-      <Text style={styles.desc}>
-        Enter the 6-digit code sent to {email}
-      </Text>
+    <>
+      <View style={styles.container}>
+        <View style={styles.pageHeaderBlock}>
+          <MaterialCommunityIcons
+            name="shield-check"
+            size={40}
+            color="#2ECC71"
+          />
+          <Text style={styles.pageHeaderTitle}>Verify OTP</Text>
+          <Text style={styles.pageHeaderSubtitle}>
+            Enter the 6-digit code sent to your email.
+          </Text>
+        </View>
 
-      <TextInput
-        style={styles.otpInput}
-        placeholder="000000"
-        placeholderTextColor="#666"
-        value={otp}
-        onChangeText={setOtp}
-        keyboardType="number-pad"
-        maxLength={6}
-      />
+        <Text style={styles.desc}>Enter the 6-digit code sent to {email}</Text>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleVerify}
-        disabled={loading}
-      >
+        {/* ✅ FIXED: removed the JSX comment from the prop list */}
+        <TextInput
+          style={styles.otpInput}
+          placeholder="000000"
+          placeholderTextColor="#666"
+          value={otp}
+          onChangeText={setOtp}
+          keyboardType="number-pad"
+          maxLength={6}
+          editable={!loading}
+        />
 
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
+        {/* Clean button — no ActivityIndicator inside */}
+        <TouchableOpacity
+          style={[styles.button, loading && styles.disabledButton]}
+          onPress={handleVerify}
+          disabled={loading}
+        >
           <Text style={styles.btnText}>Verify Code</Text>
-        )}
+        </TouchableOpacity>
+      </View>
 
-      </TouchableOpacity>
-
-    </View>
+      {/* Overlay handles its own text internally */}
+      <LoadingOverlay visible={loading} />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container:{flex:1,padding:25,justifyContent:'center',backgroundColor:'#fff'},
+  container: {
+    flex: 1,
+    padding: 25,
+    justifyContent: "center",
+    backgroundColor: "#fff",
+  },
   pageHeaderBlock: {
     alignItems: "center",
     marginBottom: 30,
@@ -111,9 +123,41 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     textAlign: "center",
   },
-  title:{fontSize:24,fontWeight:'bold',marginBottom:10,textAlign:'center'},
-  desc:{textAlign:'center',marginBottom:25,color:'#666'},
-  otpInput:{borderWidth:1,borderColor:'#ddd',padding:15,borderRadius:10,fontSize:28,letterSpacing:10,textAlign:'center',marginBottom:25},
-  button:{backgroundColor:'#2ECC71',padding:16,borderRadius:10,alignItems:'center'},
-  btnText:{color:'#fff',fontWeight:'bold',fontSize:16}
+  title: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 10,
+    textAlign: "center",
+  },
+  desc: {
+    textAlign: "center",
+    marginBottom: 25,
+    color: "#666",
+  },
+  otpInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    padding: 15,
+    borderRadius: 10,
+    fontSize: 28,
+    letterSpacing: 10,
+    textAlign: "center",
+    marginBottom: 25,
+  },
+  button: {
+    backgroundColor: "#2ECC71",
+    padding: 16,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+  // ✅ ADDED: missing style so the button visibly dims during loading
+  disabledButton: {
+    backgroundColor: "#27ae60",
+    opacity: 0.85,
+  },
+  btnText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 16,
+  },
 });

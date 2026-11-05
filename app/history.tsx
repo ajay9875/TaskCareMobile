@@ -156,7 +156,7 @@ export default function HistoryScreen() {
           <View style={styles.summaryTitleTextContainer}>
             <Text style={styles.summaryTitleText}>
               {history.length === 1
-                ? "TODAY'S SUMMARY"
+                ? `${history[0]?.date_full ?? history[0]?.date ?? ""}'s SUMMARY`
                 : "LIFETIME PERFORMANCE"}
             </Text>
             <Text style={styles.summaryTitleSubtext}>
@@ -287,8 +287,9 @@ export default function HistoryScreen() {
 
     return (
       <View style={styles.card}>
-        <Text style={styles.dateText}>{item.date}</Text>
-
+        <Text style={styles.dateText}>
+          {item.date_full ?? item.date}
+        </Text>
         <View style={styles.modeSplitRow}>
           {/* Walking Column */}
           <View style={styles.modeColumn}>
@@ -509,7 +510,7 @@ export default function HistoryScreen() {
       ) : (
         <FlatList
           data={history}
-          keyExtractor={(item) => item.date}
+          keyExtractor={(item) => item.date_iso ?? item.date}
           renderItem={renderDayBlock}
           ListHeaderComponent={renderHeaderSummary}
           ListEmptyComponent={renderEmptyHistory}

@@ -45,6 +45,7 @@ const FOREGROUND_POLL_MS = 3000;
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
+const RECONCILE_MIN_INTERVAL_MS = 60_000;
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
@@ -58,6 +59,7 @@ let foregroundPollTimer: any = null;
 let isCheckingNotificationPermission = false;
 let backgroundTaskRegistered = false;
 let backgroundFetchRegistered = false;
+let lastReconcileTime = 0;
 
 // ─── Types ───────────────────────────────────────────────────
 export type StepEvent = {
@@ -67,7 +69,7 @@ export type StepEvent = {
   created_at: number;
 };
 
-// ← NEW: exported so login.tsx can call it after login
+// ─── Token helper (exported for login.tsx) ──────────────────
 export const getNativeSyncToken = async (): Promise<string | null> => {
   try {
     const res = await fetch(`${API_BASE}/steps/native-token`, {
@@ -152,7 +154,7 @@ export const enqueueSteps = async (
   flushQueue();
 };
 
-// ─── Flush queue ─────────────────────────────────────────────
+// ─── Flush queue (JS foreground → /api/steps/sync) ─────────
 export const flushQueue = async () => {
   if (isFlushing) return;
   isFlushing = true;
@@ -259,7 +261,7 @@ export const scheduleFlush = () => {
   }, SYNC_DEBOUNCE_MS);
 };
 
-// ─── Core: read pedometer and compute a delta ────────────────
+// ─── Read pedometer delta (THE SOURCE OF TRUTH) ────────────
 const readPedometerDelta = async (): Promise<{
   delta: number;
   current: number;
@@ -301,10 +303,7 @@ const readPedometerDelta = async (): Promise<{
   }
 };
 
-// ← NEW: Anti-double-count reconcile (throttled 60s)
-let lastReconcileTime = 0;
-const RECONCILE_MIN_INTERVAL_MS = 60_000; // ← IMPORTANT: 60 seconds, not 5
-
+// ─── Reconcile (ONLY pulls server if it's AHEAD of pedometer) ──
 const reconcileBaselineFromServer = async (): Promise<void> => {
   const now = Date.now();
   if (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS) {
@@ -323,50 +322,53 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
     const serverTotal = (data.walking_steps || 0) + (data.treadmill_steps || 0);
 
     const todaySteps = await getTodayStepCountAsync();
-    const cappedBaseline = Math.min(serverTotal, todaySteps);
-
     const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
     const lastSyncedLocal = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
 
-    if (cappedBaseline > lastSyncedLocal) {
-      await AsyncStorage.setItem(
-        LAST_SYNCED_COUNT_KEY,
-        cappedBaseline.toString(),
-      );
+    // ✅ CRITICAL: Only reconcile if server > pedometer (native wrote extra)
+    if (serverTotal > todaySteps && serverTotal > lastSyncedLocal) {
+      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, serverTotal.toString());
       console.log(
-        `[stepTracker] Reconciled baseline: ${lastSyncedLocal} → ${cappedBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
+        `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${serverTotal} (server ahead of pedometer)`,
       );
     }
+    // Do NOTHING otherwise — let readPedometerDelta compute real deltas
   } catch (e) {
     console.log("[stepTracker] reconcileBaselineFromServer failed:", e);
   }
 };
 
-// ─── recoverMissedSteps ──────────────────────────────────────
+// ─── Recover missed steps (THE KEY FUNCTION) ────────────────
 export const recoverMissedSteps = async () => {
   if (isRecovering) return;
   isRecovering = true;
 
   try {
-    // ← NEW: reconcile before computing delta
+    // Step 1: Check if the server is AHEAD of the pedometer (native sync ran)
     await reconcileBaselineFromServer();
 
+    // Step 2: Read pedometer delta from the (possibly updated) baseline
     const result = await readPedometerDelta();
     if (!result || result.delta <= 0) return;
 
+    // Step 3: Enqueue the delta
     const mode = await readActiveMode();
     await enqueueSteps(result.delta, mode);
 
+    // Step 4: Update notification title
     try {
       await StepTracker.updateConfig({
         notificationTitle: "👑 Hit: {steps} of {goal} steps!",
       });
     } catch (e) {}
 
+    // Step 5: Emit event so steps.tsx updates the UI INSTANTLY
     DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
       delta: result.delta,
       mode,
     });
+
+    // Step 6: Flush queue (JS-side sync)
     await flushQueue();
   } finally {
     isRecovering = false;
@@ -436,7 +438,7 @@ const handleNotificationPermission = async (): Promise<boolean> => {
   }
 };
 
-// ─── Background task (pedometer) ─────────────────────────────
+// ─── Background tasks ────────────────────────────────────────
 try {
   TaskManager.defineTask<StepCountTaskData>(
     STEP_COUNT_TASK,
@@ -457,7 +459,6 @@ try {
   console.log("[stepTracker] defineTask failed:", e);
 }
 
-// ─── Background fetch task ───────────────────────────────────
 try {
   TaskManager.defineTask(BACKGROUND_FETCH_TASK, async () => {
     try {
@@ -534,7 +535,7 @@ const attachAppStateListener = () => {
 
   AppState.addEventListener("change", async (next) => {
     if (next === "active") {
-      // ← NEW: reset throttle so fresh reconcile on resume
+      // Reset throttle so a fresh reconcile runs on every resume
       lastReconcileTime = 0;
       await recoverMissedSteps();
       await flushQueue();
@@ -542,7 +543,7 @@ const attachAppStateListener = () => {
     } else if (next === "background" || next === "inactive") {
       stopForegroundPoll();
       await flushQueue().catch(() => {});
-      // ← NEW: trigger native sync immediately instead of waiting 1h
+      // Trigger native sync immediately instead of waiting 1h
       try {
         await StepTracker.syncNow();
       } catch (e) {
@@ -578,7 +579,7 @@ const ensureBackgroundStepTracking = async () => {
   }
 };
 
-// ─── initLiveNotificationTracker ─────────────────────────────
+// ─── Init live notification tracker (WITH REMOTE SYNC) ─────
 const initLiveNotificationTracker = async () => {
   try {
     const cachedTarget = await AsyncStorage.getItem(
@@ -586,7 +587,7 @@ const initLiveNotificationTracker = async () => {
     );
     const target = cachedTarget ? parseInt(cachedTarget, 10) : 5000;
 
-    // ← NEW: fetch token before init
+    // Fetch native sync token BEFORE init
     const nativeToken = await getNativeSyncToken();
 
     await StepTracker.initialize({
@@ -596,7 +597,7 @@ const initLiveNotificationTracker = async () => {
       historyRetentionDays: 31,
       notificationTitle: "👑 Hit: {steps} of {goal} steps!",
 
-      // ← NEW: remote sync config
+      // Remote sync configuration
       remoteSyncUrl: `${API_BASE}/steps/sync/native`,
       remoteSyncHeaders: nativeToken
         ? { Authorization: `Bearer ${nativeToken}` }
@@ -615,7 +616,7 @@ const initLiveNotificationTracker = async () => {
         notificationTitle: "👑 Hit: {steps} of {goal} steps!",
       });
 
-      // ← NEW: auto-recover from auth failures
+      // Auto-recover from auth failures
       try {
         StepTracker.addListener("syncAuthFailed", async () => {
           console.log("[stepTracker] syncAuthFailed, refreshing token");
@@ -636,6 +637,7 @@ const initLiveNotificationTracker = async () => {
   }
 };
 
+// ─── Public helpers ─────────────────────────────────────────
 export const updateNativeTarget = async (newTarget: number) => {
   try {
     await StepTracker.updateConfig({
@@ -698,3 +700,4 @@ export const stopStepTracker = async () => {
 export const getPendingQueue = readQueue;
 export const getQueueSize = async (): Promise<number> =>
   (await readQueue()).length;
+   

@@ -1,8 +1,10 @@
+// app/login.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+// app/login.tsx — top of file
+import { useEffect, useRef, useState } from "react";   // ← add useRef
 import {
-  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -10,11 +12,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthContext"; // ✅ Add this
-import { registerForPushNotifications } from "../utils/pushNotifications";
-// Add these right below the other imports at the top of login.tsx
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import StepTracker from "react-native-step-tracker-pro";
+import LoadingOverlay from "../components/LoadingOverlay"; // ← NEW
+import { useAuth } from "../context/AuthContext";
+import { registerForPushNotifications } from "../utils/pushNotifications";
 import { getNativeSyncToken, updateNativeTarget } from "../utils/stepTracker";
 
 export default function Login() {
@@ -24,27 +25,37 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const params = useLocalSearchParams();
-  const { checkSession } = useAuth(); // ✅ Add this
+  const { checkSession } = useAuth();
 
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
-  useEffect(() => {
-    if (params.sessionExpired === "true") {
-      Alert.alert(
-        "Access Denied",
-        "Authentication Required. Please sign in to access this section.",
-        [
-          {
-            text: "OK",
-            onPress: () => {
-              router.setParams({});
-            },
-          },
-        ],
-        { cancelable: false },
-      );
-    }
-  }, [params.sessionExpired]);
+// app/login.tsx — replace the existing useEffect with this expanded version
+
+// app/login.tsx — inside the component, before the useEffect
+const shownFlags = useRef<{ expired?: boolean; loggedOut?: boolean }>({});
+
+useEffect(() => {
+  if (params.sessionExpired === "true" && !shownFlags.current.expired) {
+    shownFlags.current.expired = true;
+    Alert.alert(
+      "Access Denied",
+      "Authentication Required. Please sign in to access this section.",
+      [{ text: "OK", onPress: () => router.setParams({}) }],
+      { cancelable: false },
+    );
+    return;
+  }
+
+  if (params.loggedOut === "true" && !shownFlags.current.loggedOut) {
+    shownFlags.current.loggedOut = true;
+    Alert.alert(
+      "Logged Out",
+      "You logged out successfully.",
+      [{ text: "OK", onPress: () => router.setParams({}) }],
+      { cancelable: false },
+    );
+  }
+}, [params.sessionExpired, params.loggedOut]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -53,6 +64,7 @@ export default function Login() {
     }
 
     setLoading(true);
+    const startTime = Date.now(); // ⏱️ START TIMER
 
     try {
       const response = await fetch(`${API_BASE}/login`, {
@@ -68,7 +80,6 @@ export default function Login() {
       const data = await response.json();
 
       if (data.status === "success") {
-        // ✅ ADD THIS: Tell the notification to update the target right after login
         const cachedTarget = await AsyncStorage.getItem(
           "@taskcare360_cached_target",
         );
@@ -76,10 +87,8 @@ export default function Login() {
           await updateNativeTarget(parseInt(cachedTarget, 10));
         }
 
-        // ✅ ADD THIS: Force the global header to update instantly!
         await checkSession();
 
-        // ✅ NEW: Refresh native sync token AFTER login so plugin gets valid Bearer header
         try {
           const freshToken = await getNativeSyncToken();
           if (freshToken) {
@@ -97,10 +106,7 @@ export default function Login() {
           console.log("[login] ❌ Native token refresh failed:", e);
         }
 
-        // ✅ 1. Navigate IMMEDIATELY — user shouldn't wait for push registration
         router.replace("/dashboard");
-
-        // ✅ 2. Register push in background (non-blocking)
         registerPushTokenInBackground();
       } else {
         Alert.alert("Error", data.message || "Invalid email or password");
@@ -108,16 +114,21 @@ export default function Login() {
     } catch (e) {
       Alert.alert("Connection Error", "Check your server connection.");
     } finally {
-      setLoading(false);
+      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY
+      const elapsedTime = Date.now() - startTime;
+      const minDelay = 2000;
+      const remainingTime = Math.max(0, minDelay - elapsedTime);
+
+      setTimeout(() => {
+        setLoading(false);
+      }, remainingTime);
     }
   };
 
-  // Fire-and-forget: runs after navigation, retries up to 4 times
   const registerPushTokenInBackground = () => {
     const tryRegister = async (attempt = 0) => {
       try {
         const token = await registerForPushNotifications();
-
         if (token) {
           console.log("[login] ✅ push token registered on attempt", attempt);
           return;
@@ -138,81 +149,84 @@ export default function Login() {
         );
       }
     };
-
-    // Small delay to let the session cookie land before registration
     setTimeout(() => tryRegister(0), 600);
   };
 
   return (
-    <View style={styles.container}>
-      {/* ✅ ADD THIS PROFESSIONAL HEADER */}
-      <View style={styles.pageHeaderBlock}>
-        <MaterialCommunityIcons
-          name="shield-account"
-          size={40}
-          color="#3498db"
-        />
-        <Text style={styles.pageHeaderTitle}>Welcome Back</Text>
-        <Text style={styles.pageHeaderSubtitle}>
-          Sign in to continue your progress.
-        </Text>
-      </View>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#666"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-      />
-
-      <View style={styles.passwordContainer}>
-        <TextInput
-          style={styles.passwordInput}
-          placeholder="Password"
-          placeholderTextColor="#666"
-          secureTextEntry={!isPasswordVisible}
-          value={password}
-          onChangeText={setPassword}
-        />
-        <TouchableOpacity
-          style={styles.eyeIcon}
-          onPress={() => setIsPasswordVisible(!isPasswordVisible)}
-        >
+    <>
+      <View style={styles.container}>
+        <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons
-            name={isPasswordVisible ? "eye-off" : "eye"}
-            size={24}
-            color="#666"
+            name="shield-account"
+            size={40}
+            color="#3498db"
           />
+          <Text style={styles.pageHeaderTitle}>Welcome Back</Text>
+          <Text style={styles.pageHeaderSubtitle}>
+            Sign in to continue your progress.
+          </Text>
+        </View>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email"
+          placeholderTextColor="#666"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          editable={!loading}
+        />
+
+        <View style={styles.passwordContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            placeholder="Password"
+            placeholderTextColor="#666"
+            secureTextEntry={!isPasswordVisible}
+            value={password}
+            onChangeText={setPassword}
+            editable={!loading}
+          />
+          <TouchableOpacity
+            style={styles.eyeIcon}
+            onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            disabled={loading}
+          >
+            <MaterialCommunityIcons
+              name={isPasswordVisible ? "eye-off" : "eye"}
+              size={24}
+              color="#666"
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* ✅ Button is now clean — no spinner inside */}
+        <TouchableOpacity
+          style={[styles.button, loading && styles.disabledButton]}
+          onPress={handleLogin}
+          disabled={loading}
+        >
+          <Text style={styles.btnText}>Login</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push("/signup")}
+          disabled={loading}
+        >
+          <Text style={styles.linkText}>New here? Sign Up</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push("/forgot-password")}
+          disabled={loading}
+        >
+          <Text style={styles.forgotlinkText}>Forgot Password? Reset now</Text>
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity
-        style={[styles.button, loading && styles.disabledButton]}
-        onPress={handleLogin}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
-        ) : (
-          <Text style={styles.btnText}>Login</Text>
-        )}
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => router.push("/signup")}
-        disabled={loading}
-      >
-        <Text style={styles.linkText}>New here? Sign Up</Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        onPress={() => router.push("/forgot-password")}
-        disabled={loading}
-      >
-        <Text style={styles.forgotlinkText}>Forgot Password? Reset now</Text>
-      </TouchableOpacity>
-    </View>
+      {/* ✅ Overlay handles its own text internally */}
+      <LoadingOverlay visible={loading} />
+    </>
   );
 }
 
@@ -223,10 +237,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#faf3f3",
   },
-  pageHeaderBlock: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
+  pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 28,
     fontWeight: "800",
@@ -239,13 +250,6 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 4,
     fontWeight: "500",
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: "bold",
-    marginBottom: 20,
-    textAlign: "center",
-    color: "#2C3E50",
   },
   input: {
     borderWidth: 1,
@@ -274,11 +278,7 @@ const styles = StyleSheet.create({
   },
   disabledButton: { backgroundColor: "#95a5a6" },
   btnText: { color: "white", textAlign: "center", fontWeight: "bold" },
-  linkText: {
-    color: "#3498db",
-    textAlign: "center",
-    marginTop: 20,
-  },
+  linkText: { color: "#3498db", textAlign: "center", marginTop: 20 },
   forgotlinkText: {
     color: "#fc2a2a",
     textAlign: "center",

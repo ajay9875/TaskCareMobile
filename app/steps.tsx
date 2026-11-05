@@ -215,31 +215,25 @@ export default function StepsScreen() {
           "@taskcare360_cached_target",
           String(data.target_steps),
         );
-
-        // ✅ ADD THIS: Push the freshly fetched target to the native notification
         await updateNativeTarget(data.target_steps);
 
-        // ✅ Clear the local queue if the DB has already caught up
-        // This prevents double-counting when opening the app
-        const { getPendingQueue, flushQueue } = require("../utils/stepTracker");
+        const { getPendingQueue } = require("../utils/stepTracker");
         const currentQueue = await getPendingQueue();
 
-        // If queue is empty, we can trust the database values completely
-        if (currentQueue.length === 0) {
-          setWalkingSteps(data.walking_steps);
-          setTreadmillSteps(data.treadmill_steps);
-        } else {
-          // If queue has items, add them to DB value
-          const localBufferWalking = currentQueue
-            .filter((e: any) => e.mode === "walking")
-            .reduce((sum: number, e: any) => sum + e.delta, 0);
-          const localBufferTreadmill = currentQueue
-            .filter((e: any) => e.mode === "treadmill")
-            .reduce((sum: number, e: any) => sum + e.delta, 0);
+        const localBufferWalking = currentQueue
+          .filter((e: any) => e.mode === "walking")
+          .reduce((sum: number, e: any) => sum + e.delta, 0);
+        const localBufferTreadmill = currentQueue
+          .filter((e: any) => e.mode === "treadmill")
+          .reduce((sum: number, e: any) => sum + e.delta, 0);
 
-          setWalkingSteps(data.walking_steps + localBufferWalking);
-          setTreadmillSteps(data.treadmill_steps + localBufferTreadmill);
-        }
+        // ✅ Use MAX — never let the UI go down
+        setWalkingSteps((prev) =>
+          Math.max(prev, data.walking_steps + localBufferWalking),
+        );
+        setTreadmillSteps((prev) =>
+          Math.max(prev, data.treadmill_steps + localBufferTreadmill),
+        );
 
         setHasNetError(false);
       }

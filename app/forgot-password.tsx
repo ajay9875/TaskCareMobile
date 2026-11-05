@@ -1,8 +1,8 @@
+// app/forgot-password.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import LoadingOverlay from "../components/LoadingOverlay"; // ← NEW
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -25,10 +26,10 @@ export default function ForgotPassword() {
     }
 
     setLoading(true);
+    const startTime = Date.now(); // ⏱️ START TIMER
 
     try {
-      // ✅ FIX: Ensure the URL matches your Flask backend route (/api/forgot_password)
-      const response = await fetch(`${API_BASE}/api/forgot_password`, {
+      const response = await fetch(`${API_BASE}/forgot_password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.toLowerCase() }),
@@ -47,43 +48,52 @@ export default function ForgotPassword() {
     } catch (error) {
       Alert.alert("Connection Error", "Check your internet connection.");
     } finally {
-      setLoading(false);
+      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY
+      const elapsedTime = Date.now() - startTime;
+      const minDelay = 2000;
+      const remainingTime = Math.max(0, minDelay - elapsedTime);
+
+      setTimeout(() => {
+        setLoading(false);
+      }, remainingTime);
     }
   };
 
   return (
-    <View style={styles.container}>
-      {/* ✅ Professional Header */}
-      <View style={styles.pageHeaderBlock}>
-        <MaterialCommunityIcons name="lock-reset" size={40} color="#e74c3c" />
-        <Text style={styles.pageHeaderTitle}>Reset Password</Text>
-        <Text style={styles.pageHeaderSubtitle}>
-          Enter your email to receive an OTP.
-        </Text>
+    <>
+      <View style={styles.container}>
+        <View style={styles.pageHeaderBlock}>
+          <MaterialCommunityIcons name="lock-reset" size={40} color="#e74c3c" />
+          <Text style={styles.pageHeaderTitle}>Reset Password</Text>
+          <Text style={styles.pageHeaderSubtitle}>
+            Enter your email to receive an OTP.
+          </Text>
+        </View>
+
+        <TextInput
+          style={styles.input}
+          placeholder="Email Address"
+          placeholderTextColor="#666"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          editable={!loading}
+        />
+
+        {/* ✅ Button is now clean — no spinner inside */}
+        <TouchableOpacity
+          style={[styles.button, loading && styles.disabledButton]}
+          onPress={handleRequestOTP}
+          disabled={loading}
+        >
+          <Text style={styles.btnText}>Send OTP</Text>
+        </TouchableOpacity>
       </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email Address"
-        placeholderTextColor="#666"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleRequestOTP}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.btnText}>Send OTP</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+      {/* ✅ Overlay handles its own text internally */}
+      <LoadingOverlay visible={loading} />
+    </>
   );
 }
 
@@ -94,10 +104,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#f9f9f9",
   },
-  pageHeaderBlock: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
+  pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 26,
     fontWeight: "800",
@@ -128,5 +135,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
+  disabledButton: { backgroundColor: "#c0392b", opacity: 0.85 },
   btnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
 });

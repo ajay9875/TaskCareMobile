@@ -6,6 +6,8 @@ import { Stack, useRouter } from "expo-router";
 import * as ExpoSplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
+import LoadingOverlay from "../components/LoadingOverlay";   // ← add
+
 import {
   ActivityIndicator,
   Alert,
@@ -61,7 +63,9 @@ function MainLayout() {
   const routerRef = useRef(router);
   routerRef.current = router;
 
-  const { user, isLoggedIn, setUser, checkSession } = useAuth();
+  const { user, isLoggedIn, isAdmin, setUser, checkSession, clearSession } =
+  useAuth();  
+
   const [isAppReady, setIsAppReady] = useState(false);
   const [isHeaderModalVisible, setHeaderModalVisible] = useState(false);
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false); // ✅ Add this
@@ -70,6 +74,7 @@ function MainLayout() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [updating, setUpdating] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);   // ← add this
 
   useEffect(() => {
     if (!Notifications) return;
@@ -142,26 +147,89 @@ function MainLayout() {
     }, 4000);
   };
 
-  const handleLogout = async () => {
-    Alert.alert("Logout", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
+const handleLogout = async () => {
+  Alert.alert("Logout", "Are you sure you want to sign out?", [
+    { text: "Cancel", style: "cancel" },
+    {
+      text: "Logout",
+      style: "destructive",
+      onPress: async () => {
+        // ── 1. Show the overlay immediately and remember the start time ──
+        setLoggingOut(true);
+        setHeaderModalVisible(false);
+        const startTime = Date.now();
+
+        try {
+          // ── 2. Stop the native step tracker (best-effort) ──
           try {
             await stopStepTracker();
-            await fetch(`${API_BASE}/logout`, { credentials: "include" });
           } catch (e) {
-          } finally {
-            setUser(null);
-            await checkSession(); // ✅ ADD THIS LINE
-            setHeaderModalVisible(false);
+            console.log("[logout] stopStepTracker failed (non-fatal):", e);
           }
-        },
+
+          // ── 3. Tell the server to drop the session (with a timeout!) ──
+          //     A slow/hung server must NOT block the local cleanup.
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 8000);
+            await fetch(`${API_BASE}/logout`, {
+              method: "POST",
+              credentials: "include",
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+          } catch (e) {
+            // Even if the network call fails, we still clear locally.
+            console.log("[logout] server logout failed (non-fatal):", e);
+          }
+
+          // ── 4. Wipe every local key the app relies on ──
+          try {
+            const keysToClear = [
+              "@taskcare360_cached_target",
+              "@taskcare360_treadmill_mode",
+              "@taskcare360_battery_prompt_shown",
+              "@taskcare360_just_reloaded",
+            ];
+            await AsyncStorage.multiRemove(keysToClear);
+
+            // If your step tracker uses its own queue key, add it here too:
+            // await AsyncStorage.removeItem("@taskcare360_pending_events");
+            // await AsyncStorage.removeItem("@taskcare360_last_sync");
+          } catch (e) {
+            console.log("[logout] AsyncStorage cleanup failed (non-fatal):", e);
+          }
+
+          // ── 5. Clear the in-memory auth state IMMEDIATELY ──
+          //    clearSession() sets user = null synchronously, so the header
+          //    avatar disappears on the very next render — before the
+          //    network round-trip below even starts.
+          clearSession();
+
+          // ── 6. Verify against the server (best-effort) ──
+          //    checkSession() will see 401 → keeps user null.
+          //    If the server is unreachable, the context's own catch
+          //    also keeps user null — no risk of re-hydrating.
+          await checkSession();
+
+
+        } finally {
+          // ── 6. Enforce 2-second minimum (same as signup.tsx) ──
+          const elapsedTime = Date.now() - startTime;
+          const minDelay = 2000;
+          const remainingTime = Math.max(0, minDelay - elapsedTime);
+
+          setTimeout(() => {
+            setLoggingOut(false);
+
+            // ── 7. Redirect to /login with a flag the screen can read ──
+            router.replace("/login?loggedOut=true");
+          }, remainingTime);
+        }
       },
-    ]);
-  };
+    },
+  ]);
+};
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editEmail.trim()) {
@@ -186,7 +254,11 @@ function MainLayout() {
       }
       const data = await response.json();
       if (data.status === "success") {
-        setUser({ name: editName.trim(), email: editEmail.trim() });
+        setUser({
+          name: data.user.name,
+          email: data.user.email,
+          is_admin: !!data.user.is_admin,
+        });
         setEditModalVisible(false);
         Alert.alert("Success", "Profile updated successfully.");
       } else {
@@ -272,6 +344,8 @@ function MainLayout() {
           <Stack.Screen name="reset_password" />
           <Stack.Screen name="profilepage" />
           <Stack.Screen name="dashboard" />
+          <Stack.Screen name="admin" />
+          <Stack.Screen name="admin/user/[id]" />
         </Stack>
 
         <View style={styles.footer}>
@@ -323,6 +397,25 @@ function MainLayout() {
                     />
                     <Text style={styles.menuText}>Edit Profile</Text>
                   </TouchableOpacity>
+
+                  {isAdmin && (
+  <TouchableOpacity
+    style={styles.menuItem}
+    onPress={() => {
+      setHeaderModalVisible(false);
+      router.push("/admin");
+    }}
+  >
+    <MaterialCommunityIcons
+      name="shield-crown-outline"
+      size={22}
+      color="#7C3AED"
+      style={{ marginRight: 14 }}
+    />
+    <Text style={styles.menuText}>Admin Panel</Text>
+  </TouchableOpacity>
+)}
+
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={() => {
@@ -460,6 +553,8 @@ function MainLayout() {
         visible={isGuestDialogVisible}
         onClose={() => setGuestDialogVisible(false)}
       />
+      {/* ✅ Global logout overlay — shows while server + local cleanup runs */}
+      <LoadingOverlay visible={loggingOut} />
     </SafeAreaView>
   );
 }
