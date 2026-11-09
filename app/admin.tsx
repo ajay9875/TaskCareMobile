@@ -54,7 +54,10 @@ type AdminUser = {
   state: "online" | "offline" | "never" | "signed_out";
   last_seen: string | null;
   label: string;
+  is_signed_in?: boolean;
+  last_status_change?: string | null;
 };
+
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -62,6 +65,49 @@ export default function AdminPanel() {
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+
+const confirmDelete = (user: AdminUser) => {
+  Alert.alert(
+    "Delete user?",
+    `This will permanently delete ${user.name} (#${user.id}) and all their data (steps, tasks, tokens). This cannot be undone.`,
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: () => deleteUser(user.id),
+      },
+    ],
+    { cancelable: true }
+  );
+};
+
+const deleteUser = async (userId: number) => {
+  try {
+    const res = await fetch(`${API_BASE}/admin/users/${userId}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    if (res.status === 401) {
+      router.replace("/login?sessionExpired=true");
+      return;
+    }
+    if (res.status === 403) {
+      Alert.alert("Access Denied", "You do not have admin privileges.");
+      router.replace("/");
+      return;
+    }
+    const data = await res.json();
+    if (!res.ok) {
+      Alert.alert("Delete failed", data?.message || "Unknown error");
+      return;
+    }
+    setUsers((prev) => prev.filter((u) => u.id !== userId));
+    Alert.alert("Deleted", `${data.message || "User removed"}`);
+  } catch (e) {
+    Alert.alert("Error", "Network error while deleting user.");
+  }
+};
 
   useEffect(() => {
     // Guard: never fetch if not logged in or not an admin
@@ -128,6 +174,7 @@ export default function AdminPanel() {
         contentContainerStyle={{ paddingBottom: 30 }}
         renderItem={({ item }) => {
           const initial = item.name?.trim().charAt(0).toUpperCase() || "?";
+
           return (
             <TouchableOpacity
               style={styles.row}
@@ -160,28 +207,64 @@ export default function AdminPanel() {
                   steps
                 </Text>
 
-                <View style={styles.statusRow}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: statusColor(item.state) },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      { color: statusColor(item.state) },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
+                {/* Status Pills Row */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+                  {/* Combined Status Dot & Text */}
+                  <View style={styles.statusRow}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        { backgroundColor: statusColor(item.state) },
+                      ]}
+                    />
+                    <Text
+                      style={[
+                        styles.statusText,
+                        { color: statusColor(item.state) },
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </View>
+
+                  {/* Signed In / Out Indicator separated by a bullet */}
+                  {item.is_signed_in !== undefined && (
+                    <View style={[styles.statusRow, { marginLeft: 8 }]}>
+                      <Text style={{ color: "#CBD5E1", fontSize: 12, marginRight: 8 }}>•</Text>
+                      <View
+                        style={[
+                          styles.statusDot,
+                          { backgroundColor: item.is_signed_in ? "#16A34A" : "#DC2626" },
+                        ]}
+                      />
+                      <Text
+                        style={[
+                          styles.statusText,
+                          { color: item.is_signed_in ? "#16A34A" : "#DC2626" },
+                        ]}
+                      >
+                        {item.is_signed_in ? "Signed In" : "Signed Out"}
+                      </Text>
+                    </View>
+                  )}
                 </View>
+
               </View>
 
-              <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <TouchableOpacity
+                  onPress={() => confirmDelete(item)}
+                  style={styles.deleteBtn}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={20} color="#DC2626" />
+                </TouchableOpacity>
+                <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+              </View>
             </TouchableOpacity>
           );
         }}
+
         ListEmptyComponent={
           <View style={{ alignItems: "center", marginTop: 60 }}>
             <MaterialCommunityIcons
@@ -200,6 +283,11 @@ export default function AdminPanel() {
 }
 
 const styles = StyleSheet.create({
+  deleteBtn: {
+  padding: 6,
+  borderRadius: 8,
+  backgroundColor: "#FEE2E2",
+  },
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
   loadingContainer: {
     flex: 1,
