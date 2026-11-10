@@ -1,6 +1,6 @@
 // app/teams/index.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
@@ -38,6 +38,14 @@ export default function MyTeamScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
+  // inside the component:
+    const { prefill } = useLocalSearchParams<{ prefill?: string }>();
+
+    useEffect(() => {
+    if (prefill && typeof prefill === "string") {
+        setJoinCode(prefill.toUpperCase());
+    }
+    }, [prefill]);
 
   useEffect(() => {
     fetchTeam();
@@ -90,12 +98,30 @@ export default function MyTeamScreen() {
     }
   };
 
-  const handleShare = () => {
-    const deepLink = `taskcaremobile://teams/join?code=${team.join_code}`;
-    Share.share({
-      message: `Join my team "${team.name}" on TaskCare360!\nUse code: ${team.join_code}\nOr click: ${deepLink}`,
-    });
-  };
+const handleShare = () => {
+  if (!team) return;
+
+  // ✅ NEW: point at /join-team?code=X so the deep link carries the code
+  const joinLink = `https://TaskCare360.pythonanywhere.com/join-team?code=${team.join_code}`;
+
+  const message =
+    `🎯 You've been invited to join "${team.name}" on TaskCare360!\n` +
+    `\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `   JOIN CODE\n` +
+    `   ${team.join_code}\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `\n` +
+    `Tap to join: ${joinLink}\n` +
+    `\n` +
+    `Or join manually:\n` +
+    `1. Open TaskCare360\n` +
+    `2. Tap the "Teams" tab at the bottom\n` +
+    `3. Enter the code above in "Join a Team"\n` +
+    `4. Tap "Join"`;
+
+  Share.share({ message });
+};
 
   // ─────────────────────────────────────────────────────────────
   // RENAME TEAM LOGIC
