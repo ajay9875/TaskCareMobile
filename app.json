@@ -61,6 +61,14 @@
             "scheme": "taskcaremobile",
             "host": "dashboard"
           }
+        },
+        {
+          "action": "VIEW",
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": {
+            "scheme": "taskcaremobile",
+            "host": "teams"
+          }
         }
       ]
     },
@@ -111,8 +119,7 @@
       "eas": {
         "projectId": "f10f38af-0647-45b5-9870-484ef77bd853"
       },
-      "updateDescription": "We removed the function to ensure that an internet connection while we switch one mode to another. Now, you can switch between treadmill and walking mode even without an internet connection. The app will sync the data once the internet connection is restored."
-    },
+    "updateDescription": "NEW: Team invites with auto-filled join code, team rename (pencil icon), team admin can view member history, delete members. Also added the Budget Wisely promo card in the profile menu."    },
     "runtimeVersion": {
       "policy": "appVersion"
     },

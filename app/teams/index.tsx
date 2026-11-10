@@ -101,7 +101,6 @@ export default function MyTeamScreen() {
 const handleShare = () => {
   if (!team) return;
 
-  // ✅ NEW: point at /join-team?code=X so the deep link carries the code
   const joinLink = `https://TaskCare360.pythonanywhere.com/join-team?code=${team.join_code}`;
 
   const message =
@@ -112,7 +111,11 @@ const handleShare = () => {
     `   ${team.join_code}\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `\n` +
-    `Tap to join: ${joinLink}\n` +
+    `👇 Tap below to join automatically\n` +
+    `\n` +
+    `${joinLink}\n` +
+    `\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
     `\n` +
     `Or join manually:\n` +
     `1. Open TaskCare360\n` +
