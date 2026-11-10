@@ -4,18 +4,16 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
-
-
 
 const CustomProgressRing = ({ percentage }: { percentage: number }) => {
   const radius = 42;
@@ -100,10 +98,10 @@ export default function AdminUserHistory() {
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
   const [status, setStatus] = useState<{
-  state: "online" | "offline" | "never";
-  label: string;
-  color: string;
-} | null>(null);
+    state: "online" | "offline" | "never";
+    label: string;
+    color: string;
+  } | null>(null);
 
   useEffect(() => {
     fetchUserHistory();
@@ -142,12 +140,15 @@ export default function AdminUserHistory() {
         setUserInfo(json.user);
         setHistory((json.history || []).filter((i: any) => i && i.date));
         setSummary(json.summary || null);
-        
+
         // Use backend data
+        const isOnline = json.user?.status_state === "online";
+        
         setStatus({
           state: json.user?.status_state ?? "never",
-          label: json.user?.status_label ?? "Not active yet",
-          color: json.user?.status_state === "online" ? "#16A34A" : 
+          // If they are online, just show "Active now". Otherwise use the backend label.
+          label: isOnline ? "Active now" : (json.user?.status_label ?? "Not active yet"),
+          color: isOnline ? "#16A34A" : 
                  json.user?.status_state === "signed_out" ? "#DC2626" : "#94A3B8",
         });
         
@@ -164,55 +165,66 @@ export default function AdminUserHistory() {
   };
 
   // ─── User header block — name, email, user_id ────────────────
-const renderUserHeader = () => {
-  if (!userInfo) return null;
-  const initial = userInfo.name?.trim().charAt(0).toUpperCase() || "?";
+  const renderUserHeader = () => {
+    if (!userInfo) return null;
+    const initial = userInfo.name?.trim().charAt(0).toUpperCase() || "?";
 
-  const signedInLabel = userInfo.is_signed_in ? "Signed in" : "Signed out";
-  const signedInColor = userInfo.is_signed_in ? "#16A34A" : "#DC2626";
+    const signedInLabel = userInfo.is_signed_in ? "Signed In" : "Signed Out";
+    const signedInColor = userInfo.is_signed_in ? "#16A34A" : "#DC2626";
 
-  return (
-    <View style={styles.userHeaderCard}>
-      <View style={styles.userAvatar}>
-        <Text style={styles.userAvatarText}>{initial}</Text>
-      </View>
-      <View style={{ flex: 1, marginLeft: 14 }}>
-        <Text style={styles.userName}>{userInfo.name}</Text>
-        <Text style={styles.userEmail} numberOfLines={1}>
-          {userInfo.email}
-        </Text>
-        <Text style={styles.userId}>User ID #{userInfo.id}</Text>
+    return (
+      <View style={styles.userHeaderCard}>
+        <View style={styles.userAvatar}>
+          <Text style={styles.userAvatarText}>{initial}</Text>
+        </View>
+        <View style={{ flex: 1, marginLeft: 14 }}>
+          <Text style={styles.userName}>{userInfo.name}</Text>
+          <Text style={styles.userEmail} numberOfLines={1}>
+            {userInfo.email}
+          </Text>
+          <Text style={styles.userId}>User ID #{userInfo.id}</Text>
 
-        {/* status meta row */}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", marginTop: 8, gap: 6 }}>
-          {/* Live status pill */}
-          {status && (
+          {/* status meta row */}
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              marginTop: 8,
+              gap: 6,
+            }}
+          >
+            {/* Live status pill */}
+            {status && (
+              <View style={styles.metaPill}>
+                <View
+                  style={[styles.metaDot, { backgroundColor: status.color }]}
+                />
+                <Text style={[styles.metaPillText, { color: status.color }]}>
+                  {status.label}
+                </Text>
+              </View>
+            )}
+            {/* Signed-in pill */}
             <View style={styles.metaPill}>
-              <View style={[styles.metaDot, { backgroundColor: status.color }]} />
-              <Text style={[styles.metaPillText, { color: status.color }]}>
-                {status.label}
+              <View
+                style={[styles.metaDot, { backgroundColor: signedInColor }]}
+              />
+              <Text style={[styles.metaPillText, { color: signedInColor }]}>
+                {signedInLabel}
               </Text>
             </View>
-          )}
-          {/* Signed-in pill */}
-          <View style={styles.metaPill}>
-            <View style={[styles.metaDot, { backgroundColor: signedInColor }]} />
-            <Text style={[styles.metaPillText, { color: signedInColor }]}>
-              {signedInLabel}
-            </Text>
-          </View>
-          {/* Target pill */}
-          <View style={styles.metaPill}>
-            <Ionicons name="flag-outline" size={11} color="#4ecca3" />
-            <Text style={[styles.metaPillText, { color: "#4ecca3" }]}>
-              Target {(userInfo.target_steps ?? 5000).toLocaleString()}
-            </Text>
+            {/* Target pill */}
+            <View style={styles.metaPill}>
+              <Ionicons name="flag-outline" size={11} color="#4ecca3" />
+              <Text style={[styles.metaPillText, { color: "#4ecca3" }]}>
+                Target {(userInfo.target_steps ?? 5000).toLocaleString()}
+              </Text>
+            </View>
           </View>
         </View>
       </View>
-    </View>
-  );
-};
+    );
+  };
 
   // ─── Everything below is a direct copy of history.tsx ────────
   const renderHeaderSummary = () => {
@@ -229,7 +241,7 @@ const renderUserHeader = () => {
           </View>
           <View style={styles.summaryTitleTextContainer}>
             <Text style={styles.summaryTitleText}>
-            {history.length === 1
+              {history.length === 1
                 ? `${history[0]?.date_full ?? history[0]?.date ?? ""}'s SUMMARY`
                 : "LIFETIME PERFORMANCE"}
             </Text>
@@ -347,9 +359,7 @@ const renderUserHeader = () => {
 
     return (
       <View style={styles.card}>
-        <Text style={styles.dateText}>
-        {item.date_full ?? item.date}
-        </Text>
+        <Text style={styles.dateText}>{item.date_full ?? item.date}</Text>
         <View style={styles.modeSplitRow}>
           <View style={styles.modeColumn}>
             <View style={styles.columnHeadingRow}>
@@ -575,18 +585,18 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
   },
   metaPill: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#ffffff10",
-  paddingHorizontal: 8,
-  paddingVertical: 4,
-  borderRadius: 10,
-  borderWidth: 1,
-  borderColor: "#ffffff18",
-  gap: 5,
-},
-metaDot: { width: 6, height: 6, borderRadius: 3 },
-metaPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff10",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#ffffff18",
+    gap: 5,
+  },
+  metaDot: { width: 6, height: 6, borderRadius: 3 },
+  metaPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
   listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
 
   /* User header block */

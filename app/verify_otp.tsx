@@ -45,7 +45,7 @@ export default function VerifyOTP() {
     } catch (error) {
       Alert.alert("Error", "Network error");
     } finally {
-      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY (same as reset_password)
+      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY
       const elapsedTime = Date.now() - startTime;
       const minDelay = 2000;
       const remainingTime = Math.max(0, minDelay - elapsedTime);
@@ -70,7 +70,6 @@ export default function VerifyOTP() {
 
         <Text style={styles.desc}>Enter the 6-digit code sent to {email}</Text>
 
-        {/* ✅ FIXED: removed the JSX comment from the prop list */}
         <TextInput
           style={styles.otpInput}
           placeholder="000000"
@@ -82,7 +81,15 @@ export default function VerifyOTP() {
           editable={!loading}
         />
 
-        {/* Clean button — no ActivityIndicator inside */}
+        {/* ✅ React Native styled Spam Warning */}
+        <View style={styles.spamWarningBox}>
+          <Text style={styles.spamWarningText}>
+            📬 <Text style={{ fontWeight: "bold" }}>Can't find the email?</Text>{" "}
+            Please check your Spam or Junk folder. If you find it there, please
+            mark it as "Not Spam" to ensure you receive future updates.
+          </Text>
+        </View>
+
         <TouchableOpacity
           style={[styles.button, loading && styles.disabledButton]}
           onPress={handleVerify}
@@ -142,7 +149,23 @@ const styles = StyleSheet.create({
     fontSize: 28,
     letterSpacing: 10,
     textAlign: "center",
+    marginBottom: 20, // Reduced margin to fit the warning box
+  },
+  // ✅ Added new styles for the spam warning
+  spamWarningBox: {
+    backgroundColor: "#f8fafc",
+    padding: 12,
     marginBottom: 25,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#cbd5e1",
+    borderStyle: "dashed",
+  },
+  spamWarningText: {
+    color: "#64748b",
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
   },
   button: {
     backgroundColor: "#2ECC71",
@@ -150,7 +173,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
   },
-  // ✅ ADDED: missing style so the button visibly dims during loading
   disabledButton: {
     backgroundColor: "#27ae60",
     opacity: 0.85,

@@ -7,12 +7,11 @@ import * as ExpoSplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
 import LoadingOverlay from "../components/LoadingOverlay";   // ← add
-
+import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   Alert,
   AppState,
-  Linking,
   LogBox,
   Modal,
   StyleSheet,
@@ -75,6 +74,23 @@ function MainLayout() {
   const [editEmail, setEditEmail] = useState("");
   const [updating, setUpdating] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);   // ← add this
+  const [showBudgetPromo, setShowBudgetPromo] = useState(false);
+
+// Inside MainLayout:
+useEffect(() => {
+  const handleDeepLink = ({ url }: { url: string }) => {
+    const parsed = Linking.parse(url);
+    // If someone clicked an invite link
+    if (parsed.path === "teams/join" && parsed.queryParams?.code) {
+      router.push({ pathname: "/teams", params: { prefill: parsed.queryParams.code } });
+    }
+  };
+
+  const sub = Linking.addEventListener("url", handleDeepLink);
+  Linking.getInitialURL().then((url) => { if (url) handleDeepLink({ url }); });
+  
+  return () => sub.remove();
+}, []);
 
   useEffect(() => {
     if (!Notifications) return;
@@ -346,20 +362,16 @@ const handleLogout = async () => {
           <Stack.Screen name="dashboard" />
           <Stack.Screen name="admin" />
           <Stack.Screen name="admin/user/[id]" />
+          <Stack.Screen name="teams/index" />
+          <Stack.Screen name="teams/member/[id]" />
         </Stack>
 
         <View style={styles.footer}>
           <NavItem icon="home" label="Home" path="/" />
           <NavItem icon="list" label="Tasks" path="/dashboard" />
           <NavItem icon="walk" label="Steps" path="/steps" />
+          <NavItem icon="people"     label="Teams"   path="/teams" />
           <NavItem icon="bar-chart" label="History" path="/history" />
-          <NavItem
-            icon="cash"
-            label="Budget"
-            onPress={() =>
-              Linking.openURL("https://budgetwisely.pythonanywhere.com/")
-            }
-          />
         </View>
       </View>
 
@@ -397,8 +409,23 @@ const handleLogout = async () => {
                     />
                     <Text style={styles.menuText}>Edit Profile</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity
+  style={styles.menuItem}
+  onPress={() => {
+    setHeaderModalVisible(false);
+    router.push("/teams"); // Takes them to the My Team screen
+  }}
+>
+  <MaterialCommunityIcons
+    name="account-group"
+    size={22}
+    color="#0284C7"
+    style={{ marginRight: 14 }}
+  />
+  <Text style={styles.menuText}>My Team</Text>
+</TouchableOpacity>
 
-                  {isAdmin && (
+{isAdmin && (
   <TouchableOpacity
     style={styles.menuItem}
     onPress={() => {
@@ -448,6 +475,24 @@ const handleLogout = async () => {
                       style={{ marginRight: 14 }}
                     />
                     <Text style={styles.menuText}>Contact Support</Text>
+                  </TouchableOpacity>
+
+                  {/* ✅ BUDGET WISELY EXTERNAL SERVICE PROMO */}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setHeaderModalVisible(false);
+                      setShowBudgetPromo(true);
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="wallet-outline"
+                      size={22}
+                      color="#16A34A"
+                      style={{ marginRight: 14 }}
+                    />
+                    <Text style={styles.menuText}>Budget Wisely</Text>
+                    <Ionicons name="open-outline" size={16} color="#94A3B8" />
                   </TouchableOpacity>
 
                   {/* ✅ SIGN OUT BUTTON */}
@@ -548,6 +593,111 @@ const handleLogout = async () => {
           </View>
         </View>
       </Modal>
+
+      {/* ✅ BUDGET WISELY PROMO MODAL */}
+      <Modal
+        visible={showBudgetPromo}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setShowBudgetPromo(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.promoDialogBox}>
+            {/* Header */}
+            <View style={styles.promoHeader}>
+              <View style={styles.promoIconCircle}>
+                <MaterialCommunityIcons name="wallet" size={32} color="#16A34A" />
+              </View>
+              <Text style={styles.promoTitle}>Budget Wisely</Text>
+              <Text style={styles.promoSubtitle}>
+                Master your money with effortless precision
+              </Text>
+            </View>
+
+            {/* Feature list */}
+            <View style={styles.promoFeatures}>
+              <View style={styles.promoFeatureRow}>
+                <MaterialCommunityIcons name="chart-line" size={20} color="#16A34A" />
+                <View style={styles.promoFeatureText}>
+                  <Text style={styles.promoFeatureTitle}>Real-Time Insights</Text>
+                  <Text style={styles.promoFeatureDesc}>
+                    Live charts for monthly & yearly spending trends
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.promoFeatureRow}>
+                <MaterialCommunityIcons name="target" size={20} color="#16A34A" />
+                <View style={styles.promoFeatureText}>
+                  <Text style={styles.promoFeatureTitle}>Effortless Budgeting</Text>
+                  <Text style={styles.promoFeatureDesc}>
+                    Monthly limits per category with visual progress
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.promoFeatureRow}>
+                <MaterialCommunityIcons name="credit-card-outline" size={20} color="#16A34A" />
+                <View style={styles.promoFeatureText}>
+                  <Text style={styles.promoFeatureTitle}>Smart Tracking</Text>
+                  <Text style={styles.promoFeatureDesc}>
+                    Log cash, card & digital spends in seconds
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.promoFeatureRow}>
+                <MaterialCommunityIcons name="file-chart-outline" size={20} color="#16A34A" />
+                <View style={styles.promoFeatureText}>
+                  <Text style={styles.promoFeatureTitle}>Reports</Text>
+                  <Text style={styles.promoFeatureDesc}>
+                    Net savings, monthly comparisons & exportable summaries
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.promoFeatureRow}>
+                <MaterialCommunityIcons name="shield-lock-outline" size={20} color="#16A34A" />
+                <View style={styles.promoFeatureText}>
+                  <Text style={styles.promoFeatureTitle}>Secure Vault</Text>
+                  <Text style={styles.promoFeatureDesc}>
+                    PIN-protected storage for sensitive financial notes
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Notice */}
+            <View style={styles.promoNotice}>
+              <MaterialCommunityIcons name="information-outline" size={16} color="#64748B" />
+              <Text style={styles.promoNoticeText}>
+                Opens Budget Wisely in your browser
+              </Text>
+            </View>
+
+            {/* Actions */}
+            <View style={styles.promoActions}>
+              <TouchableOpacity
+                style={styles.promoCancelBtn}
+                onPress={() => setShowBudgetPromo(false)}
+              >
+                <Text style={styles.promoCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.promoOpenBtn}
+                onPress={() => {
+                  setShowBudgetPromo(false);
+                  Linking.openURL("https://budgetwisely.pythonanywhere.com/");
+                }}
+              >
+                <Ionicons name="open-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.promoOpenText}>Open Budget Wisely</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ✅ REUSABLE GUEST DIALOG */}
       <AuthDialog
         visible={isGuestDialogVisible}
@@ -755,4 +905,105 @@ const styles = StyleSheet.create({
     backgroundColor: "#6200EE",
   },
   saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
+  // Budget Wisely promo modal
+promoDialogBox: {
+  width: "100%",
+  maxWidth: 400,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 20,
+  padding: 24,
+  elevation: 10,
+},
+promoHeader: {
+  alignItems: "center",
+  marginBottom: 20,
+},
+promoIconCircle: {
+  width: 60,
+  height: 60,
+  borderRadius: 30,
+  backgroundColor: "#ECFDF5",
+  justifyContent: "center",
+  alignItems: "center",
+  marginBottom: 12,
+},
+promoTitle: {
+  fontSize: 22,
+  fontWeight: "800",
+  color: "#0F172A",
+  marginBottom: 4,
+},
+promoSubtitle: {
+  fontSize: 13,
+  color: "#64748B",
+  textAlign: "center",
+},
+promoFeatures: {
+  backgroundColor: "#F8FAFC",
+  borderRadius: 14,
+  padding: 14,
+  marginBottom: 16,
+},
+promoFeatureRow: {
+  flexDirection: "row",
+  alignItems: "flex-start",
+  paddingVertical: 8,
+  gap: 12,
+},
+promoFeatureText: {
+  flex: 1,
+},
+promoFeatureTitle: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#0F172A",
+  marginBottom: 2,
+},
+promoFeatureDesc: {
+  fontSize: 12,
+  color: "#64748B",
+  lineHeight: 16,
+},
+promoNotice: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 6,
+  marginBottom: 16,
+},
+promoNoticeText: {
+  fontSize: 12,
+  color: "#64748B",
+  fontStyle: "italic",
+},
+promoActions: {
+  flexDirection: "row",
+  gap: 10,
+},
+promoCancelBtn: {
+  flex: 1,
+  paddingVertical: 12,
+  borderRadius: 10,
+  backgroundColor: "#F1F5F9",
+  alignItems: "center",
+},
+promoCancelText: {
+  color: "#64748B",
+  fontWeight: "700",
+  fontSize: 14,
+},
+promoOpenBtn: {
+  flex: 2,
+  flexDirection: "row",
+  paddingVertical: 12,
+  borderRadius: 10,
+  backgroundColor: "#16A34A",
+  alignItems: "center",
+  justifyContent: "center",
+},
+promoOpenText: {
+  color: "#FFFFFF",
+  fontWeight: "700",
+  fontSize: 14,
+},
 });
