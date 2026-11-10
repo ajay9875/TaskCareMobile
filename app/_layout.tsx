@@ -270,7 +270,9 @@ const handleLogout = async () => {
       }
       const data = await response.json();
       if (data.status === "success") {
+        // in _layout.tsx handleSaveProfile
         setUser({
+          id: data.user.id,       // ← add
           name: data.user.name,
           email: data.user.email,
           is_admin: !!data.user.is_admin,
@@ -362,6 +364,7 @@ const handleLogout = async () => {
           <Stack.Screen name="dashboard" />
           <Stack.Screen name="admin" />
           <Stack.Screen name="admin/user/[id]" />
+          <Stack.Screen name="admin/team/[id]" />
           <Stack.Screen name="teams/index" />
           <Stack.Screen name="teams/member/[id]" />
         </Stack>

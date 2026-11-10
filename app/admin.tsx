@@ -58,7 +58,7 @@ type AdminTeam = {
 
 export default function AdminPanel() {
   const router = useRouter();
-  const { isAdmin, isLoggedIn } = useAuth();
+  const { user, isAdmin, isLoggedIn } = useAuth();
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [teams, setTeams] = useState<AdminTeam[]>([]);
@@ -138,7 +138,7 @@ export default function AdminPanel() {
         }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert("Delete failed", data?.message || "Unknown error");
+          Alert.alert("Delete failed", data?.error || data?.message || "Unknown error");
           return;
         }
         setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
@@ -167,7 +167,7 @@ export default function AdminPanel() {
         }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert("Delete failed", data?.message || "Unknown error");
+          Alert.alert("Delete failed", data?.error || data?.message || "Unknown error");
           return;
         }
         setTeams((prev) => prev.filter((t) => t.id !== deleteTarget.id));
@@ -372,6 +372,8 @@ export default function AdminPanel() {
           }
           renderItem={({ item }) => {
             const isDeleting = deletingUserId === item.id;
+            // inside renderItem:
+            const isSelf = user?.id === item.id;
             return (
               <View style={styles.row}>
                 {/* ── Tappable main body → opens user detail ── */}
@@ -406,10 +408,11 @@ export default function AdminPanel() {
 
                 {/* ── Right-side actions: trash + chevron ── */}
                 <View style={styles.actionsWrap}>
-                  <TouchableOpacity
-                    style={styles.trashBtn}
-                    disabled={isDeleting}
-                    onPress={() => openDeleteModal("user", item)}
+                  {!isSelf && (
+                    <TouchableOpacity
+                      style={styles.trashBtn}
+                      disabled={isDeleting}
+                      onPress={() => openDeleteModal("user", item)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
                     {isDeleting ? (
@@ -422,6 +425,7 @@ export default function AdminPanel() {
                       />
                     )}
                   </TouchableOpacity>
+                  )}
                   <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
                 </View>
               </View>

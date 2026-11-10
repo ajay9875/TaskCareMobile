@@ -8,7 +8,12 @@ import React, {
   useState,
 } from "react";
 
-type User = { name: string; email: string; is_admin?: boolean } | null;
+type User = {
+  id: number;          // ← add
+  name: string;
+  email: string;
+  is_admin?: boolean;
+} | null;
 
 type AuthContextType = {
   user: User;
@@ -70,6 +75,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (data?.status === "success" && data?.user) {
         if (isMounted.current) {
           setUser({
+            id: data.user.id,          // ← add
             name: data.user.name,
             email: data.user.email,
             is_admin: !!data.user.is_admin,

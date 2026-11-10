@@ -1,12 +1,13 @@
 // app/teams/index.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { useRouter, useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     FlatList,
     Modal,
+    RefreshControl,
     Share,
     StyleSheet,
     Text,
@@ -20,6 +21,7 @@ const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 export default function MyTeamScreen() {
   const [loading, setLoading] = useState(true);
   const [team, setTeam] = useState<any>(null);
+  const [fetchError, setFetchError] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
@@ -27,6 +29,11 @@ export default function MyTeamScreen() {
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
+
+  // Delete team modal state
+  const [deleteTeamModalVisible, setDeleteTeamModalVisible] = useState(false);
+  const [deleteTeamConfirmText, setDeleteTeamConfirmText] = useState("");
+  const [isDeletingTeam, setIsDeletingTeam] = useState(false);
 
   // Delete member modal state
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -38,32 +45,79 @@ export default function MyTeamScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
-  // inside the component:
-    const { prefill } = useLocalSearchParams<{ prefill?: string }>();
+  const { prefill } = useLocalSearchParams<{ prefill?: string }>();
 
-    useEffect(() => {
+  // ── Deep-link prefill ─────────────────────────────────────
+  useEffect(() => {
     if (prefill && typeof prefill === "string") {
-        setJoinCode(prefill.toUpperCase());
+      setJoinCode(prefill.toUpperCase());
     }
-    }, [prefill]);
+  }, [prefill]);
+
+  // ── Deep-link while already in a team → alert ─────────────
+  useEffect(() => {
+    if (loading) return;
+    if (!prefill) return;
+    if (!team) return;
+
+    Alert.alert(
+      "Already in a team",
+      `You're already part of "${team.name}". Ask a team admin to remove you before joining another team.`,
+      [{ text: "OK" }],
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, team, prefill]);
+
+  // ── Fetch team ────────────────────────────────────────────
+  const fetchTeam = async () => {
+    setLoading(true);
+    setFetchError(false);
+    try {
+      const res = await fetch(`${API_BASE}/teams/my-team`, {
+        credentials: "include",
+      });
+
+      if (res.status === 401) {
+        router.replace("/login?sessionExpired=true");
+        return;
+      }
+
+      const data = await res.json();
+      if (data.status === "success") {
+        setTeam(data.team);
+      } else {
+        setFetchError(true);
+      }
+    } catch (e) {
+      setFetchError(true);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
     fetchTeam();
   }, []);
 
-  const fetchTeam = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/teams/my-team`, {
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (data.status === "success") setTeam(data.team);
-    } catch (e) {
-      Alert.alert("Error", "Could not load team");
-    } finally {
-      setLoading(false);
-    }
+  // ── Leaderboard (sorted, tie-broken) ──────────────────────
+  const leaderboard = useMemo(() => {
+    if (!team?.members) return [];
+    return [...team.members].sort((a: any, b: any) => {
+      const diff = (b.steps_today ?? 0) - (a.steps_today ?? 0);
+      if (diff !== 0) return diff;
+      return a.user_id - b.user_id; // deterministic tie-break
+    });
+  }, [team]);
+
+  // ── Competition ranking (5,4,4,4,1 → 1,2,2,2,5) ──────────
+  const rankFor = (steps: number) =>
+    leaderboard.filter((m: any) => (m.steps_today ?? 0) > steps).length + 1;
+
+  const medalFor = (rank: number) => {
+    if (rank === 1) return "🥇";
+    if (rank === 2) return "🥈";
+    if (rank === 3) return "🥉";
+    return `#${rank}`;
   };
 
   const handleCreate = async () => {
@@ -98,37 +152,35 @@ export default function MyTeamScreen() {
     }
   };
 
-const handleShare = () => {
-  if (!team) return;
+  const handleShare = () => {
+    if (!team) return;
 
-  const joinLink = `https://TaskCare360.pythonanywhere.com/join-team?code=${team.join_code}`;
+    const joinLink = `https://TaskCare360.pythonanywhere.com/join-team?code=${team.join_code}`;
 
-  const message =
-    `🎯 You've been invited to join "${team.name}" on TaskCare360!\n` +
-    `\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `   JOIN CODE\n` +
-    `   ${team.join_code}\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `\n` +
-    `👇 Tap below to join automatically\n` +
-    `\n` +
-    `${joinLink}\n` +
-    `\n` +
-    `━━━━━━━━━━━━━━━━━━━━\n` +
-    `\n` +
-    `Or join manually:\n` +
-    `1. Open TaskCare360\n` +
-    `2. Tap the "Teams" tab at the bottom\n` +
-    `3. Enter the code above in "Join a Team"\n` +
-    `4. Tap "Join"`;
+    const message =
+      `🎯 You've been invited to join "${team.name}" on TaskCare360!\n` +
+      `\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `   JOIN CODE\n` +
+      `   ${team.join_code}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `\n` +
+      `👇 Tap below to join automatically\n` +
+      `\n` +
+      `${joinLink}\n` +
+      `\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `\n` +
+      `Or join manually:\n` +
+      `1. Open TaskCare360\n` +
+      `2. Tap the "Teams" tab at the bottom\n` +
+      `3. Enter the code above in "Join a Team"\n` +
+      `4. Tap "Join"`;
 
-  Share.share({ message });
-};
+    Share.share({ message });
+  };
 
-  // ─────────────────────────────────────────────────────────────
-  // RENAME TEAM LOGIC
-  // ─────────────────────────────────────────────────────────────
+  // ── Rename ────────────────────────────────────────────────
   const openRenameModal = () => {
     setRenameValue(team?.name || "");
     setRenameModalVisible(true);
@@ -183,9 +235,7 @@ const handleShare = () => {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // DELETE MEMBER LOGIC
-  // ─────────────────────────────────────────────────────────────
+  // ── Delete member ─────────────────────────────────────────
   const openDeleteModal = (memberId: number, memberName: string) => {
     setMemberToDelete({ id: memberId, name: memberName });
     setDeleteConfirmText("");
@@ -225,9 +275,80 @@ const handleShare = () => {
     }
   };
 
+  // ── Delete team (admin only) ──────────────────────────────
+  const openDeleteTeamModal = () => {
+    setDeleteTeamConfirmText("");
+    setDeleteTeamModalVisible(true);
+  };
+
+  const executeDeleteTeam = async () => {
+    if (deleteTeamConfirmText !== "DELETE") return;
+
+    setIsDeletingTeam(true);
+    setDeleteTeamModalVisible(false);
+
+    try {
+      const res = await fetch(`${API_BASE}/teams/delete`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        router.replace("/login?sessionExpired=true");
+        return;
+      }
+      if (res.status === 403) {
+        Alert.alert("Access Denied", "Only team admins can delete the team.");
+        return;
+      }
+      if (!res.ok) {
+        Alert.alert("Error", data?.error || "Failed to delete team");
+        return;
+      }
+
+      Alert.alert(
+        "Team deleted",
+        "Your team has been deleted. All members have been removed.",
+      );
+      setTeam(null); // immediately show Create/Join screen
+      await fetchTeam(); // confirm with server
+    } catch (e) {
+      Alert.alert("Error", "Network error while deleting team");
+    } finally {
+      setIsDeletingTeam(false);
+    }
+  };
+
+  // ── Loading ───────────────────────────────────────────────
   if (loading) return <ActivityIndicator style={{ flex: 1 }} size="large" />;
 
-  // ─── NO TEAM: Show Create / Join Options ───
+  // ── Retry screen ──────────────────────────────────────────
+  if (fetchError) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Teams</Text>
+        <View style={styles.card}>
+          <MaterialCommunityIcons
+            name="wifi-off"
+            size={36}
+            color="#DC2626"
+            style={{ alignSelf: "center", marginBottom: 10 }}
+          />
+          <Text
+            style={{ textAlign: "center", color: "#475569", marginBottom: 14 }}
+          >
+            Could not load your team. Check your connection and try again.
+          </Text>
+          <TouchableOpacity style={styles.btnPrimary} onPress={fetchTeam}>
+            <Text style={styles.btnText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  // ── No team → Create / Join ───────────────────────────────
   if (!team) {
     return (
       <View style={styles.container}>
@@ -263,7 +384,7 @@ const handleShare = () => {
     );
   }
 
-  // ─── HAS TEAM: Show Dashboard ───
+  // ── Has team → leaderboard dashboard ──────────────────────
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -298,31 +419,40 @@ const handleShare = () => {
         )}
       </View>
 
-      <Text style={styles.subtitle}>Team Members</Text>
+      <Text style={styles.subtitle}>Leaderboard</Text>
 
       <FlatList
-        data={team.members}
-        keyExtractor={(item) => item.user_id.toString()}
+        data={leaderboard}
+        keyExtractor={(item: any) => item.user_id.toString()}
         contentContainerStyle={{ paddingBottom: 20 }}
-        renderItem={({ item }) => {
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={fetchTeam} />
+        }
+        renderItem={({ item }: { item: any }) => {
           const isMe = item.user_id === team.current_user_id;
+          const rank = rankFor(item.steps_today ?? 0);
 
           return (
-            <View style={styles.row}>
-              {/* Tappable Body (View History) */}
+            <View style={[styles.row, isMe && styles.rowMe]}>
+              <View style={styles.rankBadge}>
+                <Text style={styles.rankText}>{medalFor(rank)}</Text>
+              </View>
+
               <TouchableOpacity
                 style={styles.rowBody}
                 activeOpacity={0.7}
                 onPress={() => {
-                  if (!team.is_admin) {
+                  const isSelf = item.user_id === team.current_user_id;
+                  if (!team.is_admin && !isSelf) {
                     Alert.alert(
-                      "Team Admins Only",
-                      "Only team admins can view member history.",
+                      "Private",
+                      "Detailed history is only visible to the member and the team admin. " +
+                        "You can see everyone's daily step totals on this leaderboard.",
                     );
                     return;
                   }
                   router.push({
-                    pathname: `/teams/member/[id]`,
+                    pathname: "/teams/member/[id]",
                     params: { id: item.user_id },
                   });
                 }}
@@ -334,7 +464,8 @@ const handleShare = () => {
                 </View>
                 <View style={styles.rowText}>
                   <Text style={styles.memberName}>
-                    {item.name} {item.role === "admin" ? "👑" : ""}
+                    {item.name} {item.role === "admin" ? "👑" : ""}{" "}
+                    {isMe ? "(you)" : ""}
                   </Text>
                   <Text style={styles.memberStatus}>
                     {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
@@ -342,31 +473,134 @@ const handleShare = () => {
                 </View>
               </TouchableOpacity>
 
-              {/* Actions: Trash (Admins only) + Chevron */}
-              <View style={styles.actionsWrap}>
-                {team.is_admin && !isMe && (
-                  <TouchableOpacity
-                    style={styles.trashBtn}
-                    onPress={() => openDeleteModal(item.user_id, item.name)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    <Ionicons name="trash-outline" size={20} color="#DC2626" />
-                  </TouchableOpacity>
-                )}
-                <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+              <View style={styles.stepsWrap}>
+                <Text style={styles.stepsNumber}>
+                  {(item.steps_today ?? 0).toLocaleString()}
+                </Text>
+                <Text style={styles.stepsLabel}>steps</Text>
               </View>
+
+              {team.is_admin && !isMe && (
+                <TouchableOpacity
+                  style={styles.trashBtn}
+                  onPress={() => openDeleteModal(item.user_id, item.name)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
+                </TouchableOpacity>
+              )}
+
+              <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
             </View>
           );
         }}
       />
 
-      {/* ─────────────────────────────────────────────────────────
-          DELETE CONFIRMATION MODAL
-      ───────────────────────────────────────────────────────── */}
+      {team.is_admin && (
+        <TouchableOpacity
+          style={styles.deleteTeamBtn}
+          onPress={openDeleteTeamModal}
+        >
+          <MaterialCommunityIcons
+            name="delete-forever-outline"
+            size={20}
+            color="#DC2626"
+            style={{ marginRight: 8 }}
+          />
+          <Text style={styles.deleteTeamBtnText}>Delete Team</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* DELETE TEAM MODAL */}
+      <Modal
+        visible={deleteTeamModalVisible}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setDeleteTeamModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <MaterialCommunityIcons
+                name="delete-forever"
+                size={36}
+                color="#DC2626"
+              />
+              <Text style={styles.modalTitle}>Delete Team?</Text>
+            </View>
+
+            <Text style={styles.modalBody}>
+              You are about to{" "}
+              <Text style={{ fontWeight: "800", color: "#DC2626" }}>
+                permanently delete
+              </Text>{" "}
+              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
+                {team.name}
+              </Text>
+              .
+            </Text>
+            <Text style={styles.modalSubBody}>
+              All members will be removed from the team and the leaderboard will
+              be gone. Their personal step history will not be deleted.
+            </Text>
+
+            <Text style={styles.modalInstruction}>
+              Please type{" "}
+              <Text
+                style={{
+                  fontWeight: "bold",
+                  color: "#DC2626",
+                  letterSpacing: 1,
+                }}
+              >
+                DELETE
+              </Text>{" "}
+              to confirm.
+            </Text>
+
+            <TextInput
+              style={styles.deleteInput}
+              placeholder="DELETE"
+              value={deleteTeamConfirmText}
+              onChangeText={setDeleteTeamConfirmText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholderTextColor="#94A3B8"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => setDeleteTeamModalVisible(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnDelete,
+                  deleteTeamConfirmText !== "DELETE" && {
+                    backgroundColor: "#FCA5A5",
+                  },
+                ]}
+                disabled={deleteTeamConfirmText !== "DELETE" || isDeletingTeam}
+                onPress={executeDeleteTeam}
+              >
+                {isDeletingTeam ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnDeleteText}>Delete Team</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* DELETE MEMBER MODAL */}
       <Modal
         visible={deleteModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent
         onRequestClose={() => setDeleteModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -444,13 +678,11 @@ const handleShare = () => {
         </View>
       </Modal>
 
-      {/* ─────────────────────────────────────────────────────────
-          RENAME TEAM MODAL
-      ───────────────────────────────────────────────────────── */}
+      {/* RENAME MODAL */}
       <Modal
         visible={renameModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent
         onRequestClose={() => setRenameModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
@@ -578,19 +810,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  // List Row Styles
+  // List row
   row: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#fff",
     borderRadius: 16,
     paddingVertical: 10,
-    paddingLeft: 14,
+    paddingLeft: 10,
     paddingRight: 8,
     marginBottom: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
   },
+  rowMe: { borderColor: "#4F46E5", borderWidth: 2 },
+  rankBadge: {
+    width: 38,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  rankText: { fontSize: 16, fontWeight: "800", color: "#475569" },
   rowBody: { flex: 1, flexDirection: "row", alignItems: "center" },
   avatar: {
     width: 46,
@@ -605,21 +845,36 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   memberStatus: { fontSize: 12, color: "#64748B", marginTop: 2 },
-
-  // Actions
-  actionsWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingLeft: 6,
-  },
+  stepsWrap: { alignItems: "flex-end", marginRight: 8 },
+  stepsNumber: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
+  stepsLabel: { fontSize: 10, color: "#64748B", marginTop: 1 },
   trashBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
+    width: 30,
+    height: 30,
+    borderRadius: 8,
     backgroundColor: "#FEE2E2",
     alignItems: "center",
     justifyContent: "center",
+    marginRight: 6,
+  },
+
+  // Delete team button
+  deleteTeamBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  deleteTeamBtnText: {
+    color: "#DC2626",
+    fontWeight: "800",
+    fontSize: 15,
   },
 
   // Modal shared
