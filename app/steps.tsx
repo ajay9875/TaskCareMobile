@@ -356,14 +356,20 @@ export default function StepsScreen() {
       ]),
     ).start();
 
-    const timer = setInterval(() => {
+    const clockTimer = setInterval(() => {
       setCurrentTime(new Date());
     }, 1000);
+
+    // ✅ Data poll timer (every 30 seconds)
+    const dataPollTimer = setInterval(() => {
+      fetchCloudMetrics();
+    }, 30000); // 30 seconds
 
     return () => {
       syncListener.remove();
       stepTakeListener.remove();
-      clearInterval(timer);
+      clearInterval(clockTimer);   // ✅ Change this
+      clearInterval(dataPollTimer); // ✅ Add this
     };
   }, []);
 

@@ -41,7 +41,7 @@ const STEP_COUNT_TASK = "taskcare360-step-count-task";
 const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
-const FOREGROUND_POLL_MS = 3000;
+const FOREGROUND_POLL_MS = 30000;
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
