@@ -72,6 +72,7 @@ export default function AdminPanel() {
   const [isVerified, setIsVerified] = useState(false);
   const [pin, setPin] = useState("");
   const [showPin, setShowPin] = useState(false); // Toggle for PIN visibility
+  const [isVerifying, setIsVerifying] = useState(false); // For the Unlock button spinner
   const [activeTab, setActiveTab] = useState<"users" | "teams">("users");
 
   // Delete Confirmation Modal State
@@ -138,7 +139,10 @@ export default function AdminPanel() {
         }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert("Delete failed", data?.error || data?.message || "Unknown error");
+          Alert.alert(
+            "Delete failed",
+            data?.error || data?.message || "Unknown error",
+          );
           return;
         }
         setUsers((prev) => prev.filter((u) => u.id !== deleteTarget.id));
@@ -167,7 +171,10 @@ export default function AdminPanel() {
         }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          Alert.alert("Delete failed", data?.error || data?.message || "Unknown error");
+          Alert.alert(
+            "Delete failed",
+            data?.error || data?.message || "Unknown error",
+          );
           return;
         }
         setTeams((prev) => prev.filter((t) => t.id !== deleteTarget.id));
@@ -183,6 +190,9 @@ export default function AdminPanel() {
   // PIN VERIFY + FETCH
   // ─────────────────────────────────────────────────────────────
   const verifyPin = async () => {
+    if (pin.length !== 6) return;
+    setIsVerifying(true);
+
     try {
       const res = await fetch(`${API_BASE}/admin/verify-pin`, {
         method: "POST",
@@ -195,9 +205,12 @@ export default function AdminPanel() {
         fetchData();
       } else {
         Alert.alert("Error", "Invalid Super Admin PIN");
+        setPin(""); // Optional: clear the incorrect PIN
       }
     } catch {
       Alert.alert("Error", "Network error");
+    } finally {
+      setIsVerifying(false);
     }
   };
 
@@ -236,6 +249,8 @@ export default function AdminPanel() {
 
   // ─── PIN SCREEN ───
   if (!isVerified) {
+    const isPinComplete = pin.length === 6;
+
     return (
       <SafeAreaView style={styles.container}>
         <View style={{ padding: 20, marginTop: 50 }}>
@@ -251,18 +266,20 @@ export default function AdminPanel() {
           <Text
             style={{ textAlign: "center", color: "#64748B", marginBottom: 20 }}
           >
-            Enter PIN to unlock Teams and User Management
+            Enter 6-digit PIN to unlock Teams and User Management
           </Text>
 
           {/* ── PIN Input with Visibility Toggle ── */}
           <View style={styles.pinInputWrapper}>
             <TextInput
               style={styles.pinInput}
-              placeholder="••••"
+              placeholder="••••••"
               keyboardType="number-pad"
               secureTextEntry={!showPin}
+              maxLength={6}
               value={pin}
               onChangeText={setPin}
+              editable={!isVerifying}
             />
             <TouchableOpacity
               style={styles.eyeIcon}
@@ -278,23 +295,32 @@ export default function AdminPanel() {
 
           <TouchableOpacity
             onPress={verifyPin}
+            disabled={!isPinComplete || isVerifying}
             style={{
-              backgroundColor: "#7C3AED",
+              backgroundColor:
+                !isPinComplete || isVerifying ? "#D1D5DB" : "#7C3AED",
               padding: 15,
               borderRadius: 10,
               marginTop: 20,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
             }}
           >
-            <Text
-              style={{
-                color: "#fff",
-                textAlign: "center",
-                fontWeight: "bold",
-                fontSize: 16,
-              }}
-            >
-              Unlock
-            </Text>
+            {isVerifying ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text
+                style={{
+                  color: "#fff",
+                  textAlign: "center",
+                  fontWeight: "bold",
+                  fontSize: 16,
+                }}
+              >
+                Unlock
+              </Text>
+            )}
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -413,18 +439,18 @@ export default function AdminPanel() {
                       style={styles.trashBtn}
                       disabled={isDeleting}
                       onPress={() => openDeleteModal("user", item)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    {isDeleting ? (
-                      <ActivityIndicator size="small" color="#DC2626" />
-                    ) : (
-                      <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color="#DC2626"
-                      />
-                    )}
-                  </TouchableOpacity>
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      {isDeleting ? (
+                        <ActivityIndicator size="small" color="#DC2626" />
+                      ) : (
+                        <Ionicons
+                          name="trash-outline"
+                          size={20}
+                          color="#DC2626"
+                        />
+                      )}
+                    </TouchableOpacity>
                   )}
                   <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
                 </View>
