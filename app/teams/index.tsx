@@ -58,7 +58,12 @@ export default function MyTeamScreen() {
   // Deep-link prefill
   useEffect(() => {
     if (prefill && typeof prefill === "string") {
+      // 1. Put the code into the Join input
       setJoinCode(prefill.toUpperCase());
+
+      // 2. Force the "Add / Join" view so the form is actually visible,
+      //    even if the user already belongs to other teams.
+      setSelectedTeamId(null);
     }
   }, [prefill]);
 
@@ -84,10 +89,6 @@ export default function MyTeamScreen() {
           data.teams.filter((t: any) => t.is_admin).length,
         );
 
-        // Auto-select the first team if none selected
-        if (data.teams.length > 0 && !selectedTeamId) {
-          setSelectedTeamId(data.teams[0].id);
-        }
       } else {
         setFetchError(true);
       }
@@ -387,11 +388,25 @@ export default function MyTeamScreen() {
             </TouchableOpacity>
           ))}
           <TouchableOpacity
-            style={styles.addTeamPill}
+            style={[
+              styles.addTeamPill,
+              selectedTeamId === null && styles.addTeamPillActive,
+            ]}
             onPress={() => setSelectedTeamId(null)}
           >
-            <Ionicons name="add" size={20} color="#4F46E5" />
-            <Text style={styles.addTeamPillText}>Add / Join</Text>
+            <Ionicons
+              name="add"
+              size={20}
+              color={selectedTeamId === null ? "#fff" : "#4F46E5"}
+            />
+            <Text
+              style={[
+                styles.addTeamPillText,
+                selectedTeamId === null && { color: "#fff" },
+              ]}
+            >
+              Add / Join
+            </Text>
           </TouchableOpacity>
         </ScrollView>
       </View>
@@ -427,55 +442,11 @@ export default function MyTeamScreen() {
         </View>
       </View>
 
-      {/* If selectedTeamId is null, show the user's teams FIRST, then Create/Join forms */}
+      {/* If selectedTeamId is null, show Create/Join forms FIRST, then the user's teams */}
       {!activeTeam ? (
         <View style={{ paddingBottom: 20 }}>
-          {/* ✅ Your existing teams */}
-          {sortedTeams.length > 0 && (
-            <View style={{ marginBottom: 4 }}>
-              <Text style={styles.cardTitle}>Your Teams</Text>
-              {sortedTeams.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  style={styles.teamListItem}
-                  onPress={() => setSelectedTeamId(t.id)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.teamListLeft}>
-                    <View
-                      style={[
-                        styles.teamListBadge,
-                        {
-                          backgroundColor: t.is_admin
-                            ? "#FEF3C7"
-                            : "#E0E7FF",
-                        },
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name={t.is_admin ? "crown" : "account"}
-                        size={16}
-                        color={t.is_admin ? "#B45309" : "#4F46E5"}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.teamListName} numberOfLines={1}>
-                        {t.name}
-                      </Text>
-                      <Text style={styles.teamListRole}>
-                        {t.is_admin ? "Admin" : "Member"} •{" "}
-                        {t.members?.length ?? 0} member
-                        {(t.members?.length ?? 0) === 1 ? "" : "s"}
-                      </Text>
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
 
-          {/* ✅ Create / Join forms (only shown when under the limit) */}
+          {/* ✅ Create / Join forms — now at the TOP, right under the stats strip */}
           {teams.length >= MAX_TEAMS ? (
             <View style={styles.limitCard}>
               <MaterialCommunityIcons
@@ -526,6 +497,51 @@ export default function MyTeamScreen() {
               </View>
             </View>
           )}
+
+          {/* ✅ Your existing teams — now BELOW the forms */}
+          {sortedTeams.length > 0 && (
+            <View style={{ marginBottom: 4 }}>
+              <Text style={styles.cardTitle}>Your Teams</Text>
+              {sortedTeams.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.teamListItem}
+                  onPress={() => setSelectedTeamId(t.id)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.teamListLeft}>
+                    <View
+                      style={[
+                        styles.teamListBadge,
+                        {
+                          backgroundColor: t.is_admin
+                            ? "#FEF3C7"
+                            : "#E0E7FF",
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={t.is_admin ? "crown" : "account"}
+                        size={16}
+                        color={t.is_admin ? "#B45309" : "#4F46E5"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.teamListName} numberOfLines={1}>
+                        {t.name}
+                      </Text>
+                      <Text style={styles.teamListRole}>
+                        {t.is_admin ? "Admin" : "Member"} •{" "}
+                        {t.members?.length ?? 0} member
+                        {(t.members?.length ?? 0) === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
         </View>
       ) : (
         /* Active Team Leaderboard */
@@ -569,10 +585,6 @@ export default function MyTeamScreen() {
 
               return (
                 <View key={item.user_id} style={[styles.row, isMe && styles.rowMe]}>
-                  <View style={styles.rankBadge}>
-                    <Text style={styles.rankText}>{medalFor(rank)}</Text>
-                  </View>
-
                   <TouchableOpacity
                     style={styles.rowBody}
                     activeOpacity={0.7}
@@ -588,9 +600,9 @@ export default function MyTeamScreen() {
                       }
                       router.push({
                         pathname: "/teams/member/[id]",
-                        params: { 
+                        params: {
                           id: item.user_id,
-                          team_id: activeTeam.id // ✅ Pass the active team ID
+                          team_id: activeTeam.id,
                         },
                       });
                     }}
@@ -611,7 +623,9 @@ export default function MyTeamScreen() {
                     </View>
                   </TouchableOpacity>
 
+                  {/* ✅ Rank badge + steps stacked on the right */}
                   <View style={styles.stepsWrap}>
+                    <Text style={styles.rankTextTop}>{medalFor(rank)}</Text>
                     <Text style={styles.stepsNumber}>
                       {(item.steps_today ?? 0).toLocaleString()}
                     </Text>
@@ -623,11 +637,7 @@ export default function MyTeamScreen() {
                       style={styles.trashBtn}
                       onPress={() => openDeleteModal(item.user_id, item.name)}
                     >
-                      <Ionicons
-                        name="trash-outline"
-                        size={18}
-                        color="#DC2626"
-                      />
+                      <Ionicons name="trash-outline" size={18} color="#DC2626" />
                     </TouchableOpacity>
                   )}
 
@@ -865,6 +875,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#C7D2FE",
   },
+  addTeamPillActive: {
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
+  },
   addTeamPillText: {
     fontSize: 14,
     fontWeight: "600",
@@ -988,7 +1002,17 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   memberStatus: { fontSize: 12, color: "#64748B", marginTop: 2 },
-  stepsWrap: { alignItems: "flex-end", marginRight: 8 },
+  stepsWrap: {
+    alignItems: "flex-end",
+    marginRight: 8,
+    minWidth: 76,                     // ✅ stable width so numbers line up
+  },
+  rankTextTop: {
+    fontSize: 13,                     // small rank pill above the steps
+    fontWeight: "800",
+    color: "#64748B",
+    marginBottom: 2,
+  },
   stepsNumber: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
   stepsLabel: { fontSize: 10, color: "#64748B", marginTop: 1 },
   trashBtn: {
