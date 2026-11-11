@@ -134,9 +134,9 @@ export default function StepsScreen() {
     setTimeout(() => {
       Alert.alert(
         "Enable Background Tracking",
-        "For the most accurate step tracking, please allow TaskCare 360 to run in the background:\n\n" +
+        "For the most accurate step tracking, please allow FitWisely to run in the background:\n\n" +
           "1. Tap 'Open Settings' below\n" +
-          "2. Find TaskCare 360\n" +
+          "2. Find FitWisely 360\n" +
           "3. Set Battery to 'Unrestricted'\n" +
           "4. Enable 'Autostart' (if available)",
         [
@@ -311,7 +311,7 @@ export default function StepsScreen() {
       clearTimeout(timeoutId);
       Alert.alert(
         "Connection Error",
-        "TaskCare360 needs a live network link to update your step target metrics.",
+        "FitWisely needs a live network link to update your step target metrics.",
       );
     } finally {
       setUpdatingGoal(false);
@@ -489,7 +489,7 @@ export default function StepsScreen() {
                   "Background Settings",
                   "For accurate step tracking:\n\n" +
                     "1. Open Settings\n" +
-                    "2. Find TaskCare 360\n" +
+                    "2. Find FitWisely 360\n" +
                     "3. Set Battery to 'Unrestricted'",
                   [
                     {

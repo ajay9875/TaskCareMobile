@@ -15,7 +15,7 @@ export default function ModalScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>TaskCare360 Info</Text>
+      <Text style={styles.title}>FitWisely Info</Text>
       
       <View style={styles.separator} />
 

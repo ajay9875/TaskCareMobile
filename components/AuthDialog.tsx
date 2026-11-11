@@ -60,7 +60,7 @@ export default function AuthDialog({ visible, onClose }: AuthDialogProps) {
         onPress={onClose}
       >
         <View style={styles.dialogBox}>
-          <Text style={styles.dialogTitle}>Welcome to TaskCare360</Text>
+          <Text style={styles.dialogTitle}>Welcome to FitWisely</Text>
           <Text style={styles.dialogSub}>
             Sign in to sync your steps and tasks.
           </Text>

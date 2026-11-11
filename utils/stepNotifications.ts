@@ -132,7 +132,7 @@ const pickMessage = (
 
 if (Platform.OS === "android") {
   Notifications.setNotificationChannelAsync("default", {
-    name: "TaskCare 360",
+    name: "FitWisely",
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 250, 250, 250],
     sound: "default",
@@ -260,7 +260,7 @@ export const schedulePeriodicReminder = async () => {
       const id = await Notifications.scheduleNotificationAsync({
         content: {
           title: "🚶 Quick step check",
-          body: "Open TaskCare 360 to see where you stand today.",
+          body: "Open FitWisely 360 to see where you stand today.",
           data: { screen: "steps" },
         },
         trigger: {

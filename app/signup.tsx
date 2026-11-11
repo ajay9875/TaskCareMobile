@@ -99,7 +99,7 @@ export default function Signup() {
           />
           <Text style={styles.pageHeaderTitle}>Create Account</Text>
           <Text style={styles.pageHeaderSubtitle}>
-            Join TaskCare360 to organize your life.
+            Join FitWisely to organize your life.
           </Text>
         </View>
 

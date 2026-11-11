@@ -408,7 +408,7 @@ const handleNotificationPermission = async (): Promise<boolean> => {
 
     Alert.alert(
       "Notification Permission Required",
-      "TaskCare 360 needs notification permission to keep step tracking running in the background.\n\n" +
+      "FitWisely needs notification permission to keep step tracking running in the background.\n\n" +
         "How to enable:\n1. Tap 'Open Settings' below.\n2. Select 'Notifications'.\n3. Choose 'Allow'.",
       [
         {

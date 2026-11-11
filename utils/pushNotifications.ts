@@ -38,7 +38,7 @@ const doRegister = async (): Promise<string | null> => {
   if (Platform.OS === 'android') {
     try {
       await Notifications.setNotificationChannelAsync('default', {
-        name: 'TaskCare 360',
+        name: 'FitWisely',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],
       });

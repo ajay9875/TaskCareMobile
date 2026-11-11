@@ -481,7 +481,7 @@ export default function HistoryScreen() {
               marginBottom: 24,
             }}
           >
-            TaskCare360 needs a live network link to load your historical
+            FitWisely needs a live network link to load your historical
             performance data. Please check your internet connection or restart
             the app.
           </Text>

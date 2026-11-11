@@ -3,7 +3,7 @@ import * as Clipboard from 'expo-clipboard';
 
 export const openSupportEmail = async () => {
   const email = "taskcare360@gmail.com";
-  const subject = "Support Request - TaskCare360";
+  const subject = "Support Request - FitWisely";
   const body = "Hello Support Team,";
   const mailUrl = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
   
