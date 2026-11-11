@@ -325,11 +325,14 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
     const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
     const lastSyncedLocal = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
 
-    // ✅ CRITICAL: Only reconcile if server > pedometer (native wrote extra)
-    if (serverTotal > todaySteps && serverTotal > lastSyncedLocal) {
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, serverTotal.toString());
+    // ✅ Reconcile when the server has already recorded these steps.
+    //    Use Math.max to also catch the case where server == pedometer
+    //    (native tracker reported the same physical steps).
+    const targetBaseline = Math.max(serverTotal, todaySteps);
+    if (targetBaseline > lastSyncedLocal) {
+      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, targetBaseline.toString());
       console.log(
-        `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${serverTotal} (server ahead of pedometer)`,
+        `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${targetBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
       );
     }
     // Do NOTHING otherwise — let readPedometerDelta compute real deltas
