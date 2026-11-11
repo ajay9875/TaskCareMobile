@@ -2,16 +2,16 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import * as ExpoSplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
-import LoadingOverlay from "../components/LoadingOverlay";   // ← add
-import * as Linking from "expo-linking";
 import {
   ActivityIndicator,
   Alert,
   AppState,
+  Image,
   LogBox,
   Modal,
   StyleSheet,
@@ -22,6 +22,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context"; // ✅ FIX: Added missing import
 import AuthDialog from "../components/AuthDialog";
+import LoadingOverlay from "../components/LoadingOverlay"; // ← add
 import CustomSplashScreen from "../components/SplashScreen";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { registerForPushNotifications } from "../utils/pushNotifications";
@@ -63,7 +64,7 @@ function MainLayout() {
   routerRef.current = router;
 
   const { user, isLoggedIn, isAdmin, setUser, checkSession, clearSession } =
-  useAuth();  
+    useAuth();
 
   const [isAppReady, setIsAppReady] = useState(false);
   const [isHeaderModalVisible, setHeaderModalVisible] = useState(false);
@@ -73,24 +74,29 @@ function MainLayout() {
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [updating, setUpdating] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);   // ← add this
+  const [loggingOut, setLoggingOut] = useState(false); // ← add this
   const [showBudgetPromo, setShowBudgetPromo] = useState(false);
 
-// Inside MainLayout:
-useEffect(() => {
-  const handleDeepLink = ({ url }: { url: string }) => {
-    const parsed = Linking.parse(url);
-    // If someone clicked an invite link
-    if (parsed.path === "teams/join" && parsed.queryParams?.code) {
-      router.push({ pathname: "/teams", params: { prefill: parsed.queryParams.code } });
-    }
-  };
+  // Inside MainLayout:
+  useEffect(() => {
+    const handleDeepLink = ({ url }: { url: string }) => {
+      const parsed = Linking.parse(url);
+      // If someone clicked an invite link
+      if (parsed.path === "teams/join" && parsed.queryParams?.code) {
+        router.push({
+          pathname: "/teams",
+          params: { prefill: parsed.queryParams.code },
+        });
+      }
+    };
 
-  const sub = Linking.addEventListener("url", handleDeepLink);
-  Linking.getInitialURL().then((url) => { if (url) handleDeepLink({ url }); });
-  
-  return () => sub.remove();
-}, []);
+    const sub = Linking.addEventListener("url", handleDeepLink);
+    Linking.getInitialURL().then((url) => {
+      if (url) handleDeepLink({ url });
+    });
+
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     if (!Notifications) return;
@@ -163,89 +169,96 @@ useEffect(() => {
     }, 4000);
   };
 
-const handleLogout = async () => {
-  Alert.alert("Logout", "Are you sure you want to sign out?", [
-    { text: "Cancel", style: "cancel" },
-    {
-      text: "Logout",
-      style: "destructive",
-      onPress: async () => {
-        // ── 1. Show the overlay immediately and remember the start time ──
-        setLoggingOut(true);
-        setHeaderModalVisible(false);
-        const startTime = Date.now();
+  const handleLogout = async () => {
+    Alert.alert(
+      "Sign Out?",
+      "⚠️ Your step tracker stops when you sign out.\n\n" +
+        "If you log out and then close or minimize the app without logging back in, any steps taken during that time will be lost.\n\n" +
+        "While logged out, your steps will never be saved automatically — they only sync to the server when you are logged in.\n\n" +
+        "Before continuing, open the Fitness Tracker screen and make sure all your steps have synced.",
+      [
+        { text: "Cancel", style: "cancel" },
+      {
+        text: "Logout",
+        style: "destructive",
+        onPress: async () => {
+          // ── 1. Show the overlay immediately and remember the start time ──
+          setLoggingOut(true);
+          setHeaderModalVisible(false);
+          const startTime = Date.now();
 
-        try {
-          // ── 2. Stop the native step tracker (best-effort) ──
           try {
-            await stopStepTracker();
-          } catch (e) {
-            console.log("[logout] stopStepTracker failed (non-fatal):", e);
+            // ── 2. Stop the native step tracker (best-effort) ──
+            try {
+              await stopStepTracker();
+            } catch (e) {
+              console.log("[logout] stopStepTracker failed (non-fatal):", e);
+            }
+
+            // ── 3. Tell the server to drop the session (with a timeout!) ──
+            //     A slow/hung server must NOT block the local cleanup.
+            try {
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
+              await fetch(`${API_BASE}/logout`, {
+                method: "POST",
+                credentials: "include",
+                signal: controller.signal,
+              });
+              clearTimeout(timeoutId);
+            } catch (e) {
+              // Even if the network call fails, we still clear locally.
+              console.log("[logout] server logout failed (non-fatal):", e);
+            }
+
+            // ── 4. Wipe every local key the app relies on ──
+            try {
+              const keysToClear = [
+                "@taskcare360_cached_target",
+                "@taskcare360_treadmill_mode",
+                "@taskcare360_battery_prompt_shown",
+                "@taskcare360_just_reloaded",
+              ];
+              await AsyncStorage.multiRemove(keysToClear);
+
+              // If your step tracker uses its own queue key, add it here too:
+              // await AsyncStorage.removeItem("@taskcare360_pending_events");
+              // await AsyncStorage.removeItem("@taskcare360_last_sync");
+            } catch (e) {
+              console.log(
+                "[logout] AsyncStorage cleanup failed (non-fatal):",
+                e,
+              );
+            }
+
+            // ── 5. Clear the in-memory auth state IMMEDIATELY ──
+            //    clearSession() sets user = null synchronously, so the header
+            //    avatar disappears on the very next render — before the
+            //    network round-trip below even starts.
+            clearSession();
+
+            // ── 6. Verify against the server (best-effort) ──
+            //    checkSession() will see 401 → keeps user null.
+            //    If the server is unreachable, the context's own catch
+            //    also keeps user null — no risk of re-hydrating.
+            await checkSession();
+          } finally {
+            // ── 6. Enforce 2-second minimum (same as signup.tsx) ──
+            const elapsedTime = Date.now() - startTime;
+            const minDelay = 2000;
+            const remainingTime = Math.max(0, minDelay - elapsedTime);
+
+            setTimeout(() => {
+              setLoggingOut(false);
+
+              // ── 7. Redirect to /login with a flag the screen can read ──
+              router.replace("/login?loggedOut=true");
+            }, remainingTime);
           }
-
-          // ── 3. Tell the server to drop the session (with a timeout!) ──
-          //     A slow/hung server must NOT block the local cleanup.
-          try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
-            await fetch(`${API_BASE}/logout`, {
-              method: "POST",
-              credentials: "include",
-              signal: controller.signal,
-            });
-            clearTimeout(timeoutId);
-          } catch (e) {
-            // Even if the network call fails, we still clear locally.
-            console.log("[logout] server logout failed (non-fatal):", e);
-          }
-
-          // ── 4. Wipe every local key the app relies on ──
-          try {
-            const keysToClear = [
-              "@taskcare360_cached_target",
-              "@taskcare360_treadmill_mode",
-              "@taskcare360_battery_prompt_shown",
-              "@taskcare360_just_reloaded",
-            ];
-            await AsyncStorage.multiRemove(keysToClear);
-
-            // If your step tracker uses its own queue key, add it here too:
-            // await AsyncStorage.removeItem("@taskcare360_pending_events");
-            // await AsyncStorage.removeItem("@taskcare360_last_sync");
-          } catch (e) {
-            console.log("[logout] AsyncStorage cleanup failed (non-fatal):", e);
-          }
-
-          // ── 5. Clear the in-memory auth state IMMEDIATELY ──
-          //    clearSession() sets user = null synchronously, so the header
-          //    avatar disappears on the very next render — before the
-          //    network round-trip below even starts.
-          clearSession();
-
-          // ── 6. Verify against the server (best-effort) ──
-          //    checkSession() will see 401 → keeps user null.
-          //    If the server is unreachable, the context's own catch
-          //    also keeps user null — no risk of re-hydrating.
-          await checkSession();
-
-
-        } finally {
-          // ── 6. Enforce 2-second minimum (same as signup.tsx) ──
-          const elapsedTime = Date.now() - startTime;
-          const minDelay = 2000;
-          const remainingTime = Math.max(0, minDelay - elapsedTime);
-
-          setTimeout(() => {
-            setLoggingOut(false);
-
-            // ── 7. Redirect to /login with a flag the screen can read ──
-            router.replace("/login?loggedOut=true");
-          }, remainingTime);
-        }
+        },
       },
-    },
-  ]);
-};
+    ]);
+  };
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editEmail.trim()) {
@@ -272,7 +285,7 @@ const handleLogout = async () => {
       if (data.status === "success") {
         // in _layout.tsx handleSaveProfile
         setUser({
-          id: data.user.id,       // ← add
+          id: data.user.id, // ← add
           name: data.user.name,
           email: data.user.email,
           is_admin: !!data.user.is_admin,
@@ -317,12 +330,16 @@ const handleLogout = async () => {
                   style={styles.headerLeft}
                   onPress={() => router.replace("/")}
                 >
-                  <Ionicons
-                    name="checkmark-done-circle"
-                    size={32} // ✅ Increased to match the profile icon
-                    color="#0300a8"
+                  {/* ✅ Use your actual icon image */}
+                  <Image
+                    source={require("../assets/images/icon.png")}
+                    style={{ width: 32, height: 32, borderRadius: 8 }}
+                    resizeMode="contain"
                   />
-                  <Text style={styles.headerLogo}>TaskCare360</Text>
+                    {/* ✅ Crisp, bold, two-tone text */}
+                    <Text style={styles.headerLogo}>
+                      Fit<Text style={{ color: "#4ecca3" }}>Wisely</Text>
+                    </Text>
                 </TouchableOpacity>
 
                 {/* ✅ Circular profile icon with border and distinct color */}
@@ -371,10 +388,10 @@ const handleLogout = async () => {
 
         <View style={styles.footer}>
           <NavItem icon="home" label="Home" path="/" />
-          <NavItem icon="list" label="Tasks" path="/dashboard" />
+          <NavItem icon="people" label="Teams" path="/teams" />
           <NavItem icon="walk" label="Steps" path="/steps" />
-          <NavItem icon="people"     label="Teams"   path="/teams" />
           <NavItem icon="bar-chart" label="History" path="/history" />
+          <NavItem icon="list" label="Tasks" path="/dashboard" />
         </View>
       </View>
 
@@ -413,38 +430,38 @@ const handleLogout = async () => {
                     <Text style={styles.menuText}>Edit Profile</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-  style={styles.menuItem}
-  onPress={() => {
-    setHeaderModalVisible(false);
-    router.push("/teams"); // Takes them to the My Team screen
-  }}
->
-  <MaterialCommunityIcons
-    name="account-group"
-    size={22}
-    color="#0284C7"
-    style={{ marginRight: 14 }}
-  />
-  <Text style={styles.menuText}>My Team</Text>
-</TouchableOpacity>
+                    style={styles.menuItem}
+                    onPress={() => {
+                      setHeaderModalVisible(false);
+                      router.push("/teams"); // Takes them to the My Team screen
+                    }}
+                  >
+                    <MaterialCommunityIcons
+                      name="account-group"
+                      size={22}
+                      color="#0284C7"
+                      style={{ marginRight: 14 }}
+                    />
+                    <Text style={styles.menuText}>My Team</Text>
+                  </TouchableOpacity>
 
-{isAdmin && (
-  <TouchableOpacity
-    style={styles.menuItem}
-    onPress={() => {
-      setHeaderModalVisible(false);
-      router.push("/admin");
-    }}
-  >
-    <MaterialCommunityIcons
-      name="shield-crown-outline"
-      size={22}
-      color="#7C3AED"
-      style={{ marginRight: 14 }}
-    />
-    <Text style={styles.menuText}>Admin Panel</Text>
-  </TouchableOpacity>
-)}
+                  {isAdmin && (
+                    <TouchableOpacity
+                      style={styles.menuItem}
+                      onPress={() => {
+                        setHeaderModalVisible(false);
+                        router.push("/admin");
+                      }}
+                    >
+                      <MaterialCommunityIcons
+                        name="shield-crown-outline"
+                        size={22}
+                        color="#7C3AED"
+                        style={{ marginRight: 14 }}
+                      />
+                      <Text style={styles.menuText}>Admin Panel</Text>
+                    </TouchableOpacity>
+                  )}
 
                   <TouchableOpacity
                     style={styles.menuItem}
@@ -515,7 +532,7 @@ const handleLogout = async () => {
               </>
             ) : (
               <>
-                <Text style={styles.dialogTitle}>Welcome to TaskCare360</Text>
+                <Text style={styles.dialogTitle}>Welcome to FitWisely</Text>
                 <Text style={styles.dialogSub}>
                   Sign in to sync your steps and tasks.
                 </Text>
@@ -609,7 +626,11 @@ const handleLogout = async () => {
             {/* Header */}
             <View style={styles.promoHeader}>
               <View style={styles.promoIconCircle}>
-                <MaterialCommunityIcons name="wallet" size={32} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="wallet"
+                  size={32}
+                  color="#16A34A"
+                />
               </View>
               <Text style={styles.promoTitle}>Budget Wisely</Text>
               <Text style={styles.promoSubtitle}>
@@ -620,9 +641,15 @@ const handleLogout = async () => {
             {/* Feature list */}
             <View style={styles.promoFeatures}>
               <View style={styles.promoFeatureRow}>
-                <MaterialCommunityIcons name="chart-line" size={20} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="chart-line"
+                  size={20}
+                  color="#16A34A"
+                />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>Real-Time Insights</Text>
+                  <Text style={styles.promoFeatureTitle}>
+                    Real-Time Insights
+                  </Text>
                   <Text style={styles.promoFeatureDesc}>
                     Live charts for monthly & yearly spending trends
                   </Text>
@@ -630,9 +657,15 @@ const handleLogout = async () => {
               </View>
 
               <View style={styles.promoFeatureRow}>
-                <MaterialCommunityIcons name="target" size={20} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="target"
+                  size={20}
+                  color="#16A34A"
+                />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>Effortless Budgeting</Text>
+                  <Text style={styles.promoFeatureTitle}>
+                    Effortless Budgeting
+                  </Text>
                   <Text style={styles.promoFeatureDesc}>
                     Monthly limits per category with visual progress
                   </Text>
@@ -640,7 +673,11 @@ const handleLogout = async () => {
               </View>
 
               <View style={styles.promoFeatureRow}>
-                <MaterialCommunityIcons name="credit-card-outline" size={20} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="credit-card-outline"
+                  size={20}
+                  color="#16A34A"
+                />
                 <View style={styles.promoFeatureText}>
                   <Text style={styles.promoFeatureTitle}>Smart Tracking</Text>
                   <Text style={styles.promoFeatureDesc}>
@@ -650,7 +687,11 @@ const handleLogout = async () => {
               </View>
 
               <View style={styles.promoFeatureRow}>
-                <MaterialCommunityIcons name="file-chart-outline" size={20} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="file-chart-outline"
+                  size={20}
+                  color="#16A34A"
+                />
                 <View style={styles.promoFeatureText}>
                   <Text style={styles.promoFeatureTitle}>Reports</Text>
                   <Text style={styles.promoFeatureDesc}>
@@ -660,7 +701,11 @@ const handleLogout = async () => {
               </View>
 
               <View style={styles.promoFeatureRow}>
-                <MaterialCommunityIcons name="shield-lock-outline" size={20} color="#16A34A" />
+                <MaterialCommunityIcons
+                  name="shield-lock-outline"
+                  size={20}
+                  color="#16A34A"
+                />
                 <View style={styles.promoFeatureText}>
                   <Text style={styles.promoFeatureTitle}>Secure Vault</Text>
                   <Text style={styles.promoFeatureDesc}>
@@ -672,7 +717,11 @@ const handleLogout = async () => {
 
             {/* Notice */}
             <View style={styles.promoNotice}>
-              <MaterialCommunityIcons name="information-outline" size={16} color="#64748B" />
+              <MaterialCommunityIcons
+                name="information-outline"
+                size={16}
+                color="#64748B"
+              />
               <Text style={styles.promoNoticeText}>
                 Opens Budget Wisely in your browser
               </Text>
@@ -693,7 +742,12 @@ const handleLogout = async () => {
                   Linking.openURL("https://budgetwisely.pythonanywhere.com/");
                 }}
               >
-                <Ionicons name="open-outline" size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Ionicons
+                  name="open-outline"
+                  size={18}
+                  color="#fff"
+                  style={{ marginRight: 6 }}
+                />
                 <Text style={styles.promoOpenText}>Open Budget Wisely</Text>
               </TouchableOpacity>
             </View>
@@ -747,21 +801,22 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: "row", alignItems: "center" },
   headerLogo: {
-    fontSize: 20, // ✅ Slightly larger text
-    fontWeight: "bold",
-    color: "#2c3e50",
+    fontSize: 22,
+    fontWeight: "900",      // 👈 Makes it extra thick and bold
+    color: "#1a1a2e",       // 👈 Dark Navy (matches "Fit" in your logo)
+    letterSpacing: -0.5,    // 👈 Tightens the letters for a modern tech look
     marginLeft: 8,
   },
-  headerRight: { padding: 4 },
+  HeaderRight: { padding: 4 },
   headerAvatar: {
-    width: 32, // ✅ Matched to the logo icon size
+    width: 32,
     height: 32,
-    borderRadius: 16, // ✅ Makes it a perfect circle
-    backgroundColor: "#0300a8", // ✅ Distinct color (matching the logo)
+    borderRadius: 16,
+    backgroundColor: "#4F46E5", // 👈 Changed to a vibrant logo blue
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2, // ✅ Added circular border
-    borderColor: "#E2E8F0", // ✅ Light gray border for a professional look
+    borderWidth: 2,
+    borderColor: "#E2E8F0",
   },
   headerAvatarText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
 
@@ -909,104 +964,104 @@ const styles = StyleSheet.create({
   },
   saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
   // Budget Wisely promo modal
-promoDialogBox: {
-  width: "100%",
-  maxWidth: 400,
-  backgroundColor: "#FFFFFF",
-  borderRadius: 20,
-  padding: 24,
-  elevation: 10,
-},
-promoHeader: {
-  alignItems: "center",
-  marginBottom: 20,
-},
-promoIconCircle: {
-  width: 60,
-  height: 60,
-  borderRadius: 30,
-  backgroundColor: "#ECFDF5",
-  justifyContent: "center",
-  alignItems: "center",
-  marginBottom: 12,
-},
-promoTitle: {
-  fontSize: 22,
-  fontWeight: "800",
-  color: "#0F172A",
-  marginBottom: 4,
-},
-promoSubtitle: {
-  fontSize: 13,
-  color: "#64748B",
-  textAlign: "center",
-},
-promoFeatures: {
-  backgroundColor: "#F8FAFC",
-  borderRadius: 14,
-  padding: 14,
-  marginBottom: 16,
-},
-promoFeatureRow: {
-  flexDirection: "row",
-  alignItems: "flex-start",
-  paddingVertical: 8,
-  gap: 12,
-},
-promoFeatureText: {
-  flex: 1,
-},
-promoFeatureTitle: {
-  fontSize: 14,
-  fontWeight: "700",
-  color: "#0F172A",
-  marginBottom: 2,
-},
-promoFeatureDesc: {
-  fontSize: 12,
-  color: "#64748B",
-  lineHeight: 16,
-},
-promoNotice: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "center",
-  gap: 6,
-  marginBottom: 16,
-},
-promoNoticeText: {
-  fontSize: 12,
-  color: "#64748B",
-  fontStyle: "italic",
-},
-promoActions: {
-  flexDirection: "row",
-  gap: 10,
-},
-promoCancelBtn: {
-  flex: 1,
-  paddingVertical: 12,
-  borderRadius: 10,
-  backgroundColor: "#F1F5F9",
-  alignItems: "center",
-},
-promoCancelText: {
-  color: "#64748B",
-  fontWeight: "700",
-  fontSize: 14,
-},
-promoOpenBtn: {
-  flex: 2,
-  flexDirection: "row",
-  paddingVertical: 12,
-  borderRadius: 10,
-  backgroundColor: "#16A34A",
-  alignItems: "center",
-  justifyContent: "center",
-},
-promoOpenText: {
-  color: "#FFFFFF",
-  fontWeight: "700",
-  fontSize: 14,
-},
+  promoDialogBox: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    elevation: 10,
+  },
+  promoHeader: {
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  promoIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "#ECFDF5",
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  promoTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  promoSubtitle: {
+    fontSize: 13,
+    color: "#64748B",
+    textAlign: "center",
+  },
+  promoFeatures: {
+    backgroundColor: "#F8FAFC",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
+  },
+  promoFeatureRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 8,
+    gap: 12,
+  },
+  promoFeatureText: {
+    flex: 1,
+  },
+  promoFeatureTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 2,
+  },
+  promoFeatureDesc: {
+    fontSize: 12,
+    color: "#64748B",
+    lineHeight: 16,
+  },
+  promoNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginBottom: 16,
+  },
+  promoNoticeText: {
+    fontSize: 12,
+    color: "#64748B",
+    fontStyle: "italic",
+  },
+  promoActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  promoCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+  },
+  promoCancelText: {
+    color: "#64748B",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  promoOpenBtn: {
+    flex: 2,
+    flexDirection: "row",
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: "#16A34A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  promoOpenText: {
+    color: "#FFFFFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

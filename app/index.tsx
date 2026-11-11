@@ -298,7 +298,8 @@ export default function LandingScreen() {
           <View style={styles.stepRow}>
             <MaterialCommunityIcons name="run-fast" size={20} color="#4ecca3" />
             <Text style={styles.stepText}>
-              2. Head to the tracking screen and select your mode.
+              2. Head to the tracking screen and select your mode (Walking or
+              Treadmill).
             </Text>
           </View>
           <View style={styles.stepRow}>
@@ -306,6 +307,155 @@ export default function LandingScreen() {
             <Text style={styles.stepText}>
               3. Keep the app running in the background; steps sync
               automatically.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="battery-charging"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              4. On Android, set battery to "Unrestricted" for accurate tracking
+              in the background.
+            </Text>
+          </View>
+
+          {/* ⚠️ Warning box — do not log out */}
+          <View style={styles.warningBox}>
+            <View style={styles.warningHeader}>
+              <Ionicons name="warning" size={20} color="#B45309" />
+              <Text style={styles.warningTitle}>Important</Text>
+            </View>
+            <Text style={styles.warningText}>
+              <Text style={{ fontWeight: "800" }}>Do NOT log out</Text> during
+              the day. Logging out stops the native step tracker and clears your
+              local queue — any unsynced steps and today's progress will be lost
+              and cannot be recovered.
+            </Text>
+            <Text style={styles.warningText}>
+              If you must sign out, first open the Fitness Tracker screen and
+              wait for the sync indicator to show all steps are saved.
+            </Text>
+          </View>
+        </View>
+
+        {/* ✅ NEW: Teams feature card */}
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <Ionicons
+              name="people"
+              size={24}
+              color="#4ecca3"
+              style={styles.cardIcon}
+            />
+            <Text style={styles.cardTitle}>Teams & Leaderboards</Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="add-circle" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Create Teams – Build your own step challenge groups.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="link" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Join with Code – Invite friends using a simple join code.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="trophy" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Live Leaderboard – Compete on daily step counts in real time.
+            </Text>
+          </View>
+          <View style={styles.featureRow}>
+            <Ionicons name="share-social" size={18} color="#555" />
+            <Text style={styles.featureText}>
+              Share Invites – Send one-tap join links via any messenger.
+            </Text>
+          </View>
+        </View>
+
+        {/* ✅ NEW: Teams how-to block */}
+        <View style={styles.stepsBox}>
+          <Text style={styles.stepsTitle}>How to create a Team:</Text>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="account-group"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              1. Log in and open the "Teams" tab from the bottom menu.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <Ionicons name="add-circle-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              2. Tap the "+ Add / Join" pill at the top.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="pencil-outline"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              3. Enter a team name under "Create a Team" and tap Create.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons name="crown" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              4. You become the admin and receive a unique join code.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.stepsBox}>
+          <Text style={styles.stepsTitle}>How to use a Team:</Text>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="share-variant"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              1. Tap "Invite" to share the join code or link with friends.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <Ionicons name="enter-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              2. Friends open Teams → "+ Add / Join" → enter the code → Join.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <Ionicons name="podium-outline" size={20} color="#4ecca3" />
+            <Text style={styles.stepText}>
+              3. Daily steps rank automatically — tap any member for history.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="shield-account"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              4. Admins can rename, remove members, or delete the team.
+            </Text>
+          </View>
+          <View style={styles.stepRow}>
+            <MaterialCommunityIcons
+              name="swap-horizontal"
+              size={20}
+              color="#4ecca3"
+            />
+            <Text style={styles.stepText}>
+              5. Join up to 10 teams — tap any pill to switch between them.
             </Text>
           </View>
         </View>
@@ -351,7 +501,7 @@ export default function LandingScreen() {
           <View style={styles.stepRow}>
             <Ionicons name="add-circle-outline" size={20} color="#4ecca3" />
             <Text style={styles.stepText}>
-              2. Click on "+Add to TaskCare" to insert new tasks.
+              2. Click on "+Add" to insert new tasks.
             </Text>
           </View>
           <View style={styles.stepRow}>
@@ -415,6 +565,32 @@ export default function LandingScreen() {
 }
 
 const styles = StyleSheet.create({
+  warningBox: {
+    width: "100%",
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+    borderRadius: 12,
+    padding: 14,
+    marginTop: 14,
+  },
+  warningHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+  },
+  warningTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#B45309",
+  },
+  warningText: {
+    fontSize: 13,
+    color: "#78350F",
+    lineHeight: 19,
+    marginBottom: 4,
+  },
   signedInBanner: {
     flexDirection: "row",
     alignItems: "center",

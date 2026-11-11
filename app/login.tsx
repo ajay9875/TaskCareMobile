@@ -106,7 +106,7 @@ useEffect(() => {
           console.log("[login] ❌ Native token refresh failed:", e);
         }
 
-        router.replace("/dashboard");
+        router.replace("/steps");
         registerPushTokenInBackground();
       } else {
         Alert.alert("Error", data.message || "Invalid email or password");

@@ -2,13 +2,13 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
+
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
-  RefreshControl,
   ScrollView,
+  RefreshControl,
   Share,
   StyleSheet,
   Text,
@@ -28,6 +28,10 @@ export default function MyTeamScreen() {
   const [fetchError, setFetchError] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
+
+  // ✅ NEW: team count states
+  const [teamCount, setTeamCount] = useState(0);
+  const [adminTeamCount, setAdminTeamCount] = useState(0);
 
   // Rename team modal state
   const [renameModalVisible, setRenameModalVisible] = useState(false);
@@ -73,6 +77,13 @@ export default function MyTeamScreen() {
       const data = await res.json();
       if (data.status === "success") {
         setTeams(data.teams);
+
+        // ✅ NEW: derive counts
+        setTeamCount(data.teams.length);
+        setAdminTeamCount(
+          data.teams.filter((t: any) => t.is_admin).length,
+        );
+
         // Auto-select the first team if none selected
         if (data.teams.length > 0 && !selectedTeamId) {
           setSelectedTeamId(data.teams[0].id);
@@ -94,6 +105,14 @@ export default function MyTeamScreen() {
   const activeTeam = useMemo(() => {
     return teams.find((t) => t.id === selectedTeamId) || null;
   }, [teams, selectedTeamId]);
+
+  // ✅ Admins first, then joined teams (stable order within each group)
+  const sortedTeams = useMemo(() => {
+    return [...teams].sort((a, b) => {
+      if (a.is_admin !== b.is_admin) return a.is_admin ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [teams]);
 
   // Leaderboard sorting
   const leaderboard = useMemo(() => {
@@ -164,11 +183,11 @@ export default function MyTeamScreen() {
     if (!activeTeam) return;
     const joinLink = `https://TaskCare360.pythonanywhere.com/join-team?code=${activeTeam.join_code}`;
     const message =
-      `🎯 You've been invited to join "${activeTeam.name}" on TaskCare360!\n\n` +
+      `🎯 You've been invited to join "${activeTeam.name}" on FitWisely!\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n   JOIN CODE\n   ${activeTeam.join_code}\n━━━━━━━━━━━━━━━━━━━━\n\n` +
       `👇 Tap below to join automatically\n${joinLink}\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
-      `Or join manually:\n1. Open TaskCare360\n2. Tap the "Teams" tab\n3. Enter the code above in "Join a Team"`;
+      `Or join manually:\n1. Open FitWisely\n2. Tap the "Teams" tab\n3. Enter the code above in "Join a Team"`;
 
     Share.share({ message });
   };
@@ -192,7 +211,7 @@ export default function MyTeamScreen() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: trimmed }),
+        body: JSON.stringify({ name: trimmed, team_id: activeTeam?.id }),
       });
       const data = await res.json().catch(() => ({}));
 
@@ -221,13 +240,13 @@ export default function MyTeamScreen() {
     setDeleteModalVisible(false);
 
     try {
-      const res = await fetch(
-        `${API_BASE}/teams/members/${memberToDelete.id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
-      );
+        const res = await fetch(
+          `${API_BASE}/teams/members/${memberToDelete.id}?team_id=${activeTeam?.id}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          },
+        );
       const data = await res.json();
 
       if (res.ok) {
@@ -250,10 +269,13 @@ export default function MyTeamScreen() {
     setDeleteTeamModalVisible(false);
 
     try {
-      const res = await fetch(`${API_BASE}/teams/delete`, {
-        method: "DELETE",
-        credentials: "include",
-      });
+        const res = await fetch(
+          `${API_BASE}/teams/delete?team_id=${activeTeam.id}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          },
+        );
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -268,6 +290,23 @@ export default function MyTeamScreen() {
       setIsDeletingTeam(false);
     }
   };
+
+  if (fetchError && teams.length === 0) {
+  return (
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 20 }}>
+      <MaterialCommunityIcons name="cloud-off-outline" size={64} color="#94A3B8" />
+      <Text style={{ fontSize: 16, color: "#64748B", marginTop: 12, textAlign: "center" }}>
+        Could not load teams. Check your connection.
+      </Text>
+      <TouchableOpacity
+        style={[styles.btnPrimary, { marginTop: 16, paddingHorizontal: 40 }]}
+        onPress={fetchTeams}
+      >
+        <Text style={styles.btnText}>Retry</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
   if (loading && teams.length === 0)
     return <ActivityIndicator style={{ flex: 1 }} size="large" />;
@@ -312,7 +351,14 @@ export default function MyTeamScreen() {
 
   // ── ACTIVE TEAM DASHBOARD ──
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={fetchTeams} />
+      }
+    >
       {/* Horizontal Team Switcher */}
       <View style={styles.switcherContainer}>
         <ScrollView
@@ -320,7 +366,7 @@ export default function MyTeamScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.switcherScroll}
         >
-          {teams.map((t) => (
+          {sortedTeams.map((t) => (
             <TouchableOpacity
               key={t.id}
               style={[
@@ -335,6 +381,7 @@ export default function MyTeamScreen() {
                   selectedTeamId === t.id && styles.teamPillTextActive,
                 ]}
               >
+                {t.is_admin ? "👑 " : ""}
                 {t.name}
               </Text>
             </TouchableOpacity>
@@ -349,9 +396,86 @@ export default function MyTeamScreen() {
         </ScrollView>
       </View>
 
-      {/* If selectedTeamId is null, show the Create/Join forms */}
+            {/* ✅ NEW: Team stats strip */}
+      <View style={styles.teamStatsRow}>
+        <View style={styles.teamStatItem}>
+          <MaterialCommunityIcons name="account-group" size={18} color="#4F46E5" />
+          <Text style={styles.teamStatValue}>{teamCount}</Text>
+          <Text style={styles.teamStatLabel}>Teams</Text>
+        </View>
+        <View style={styles.teamStatDivider} />
+        <View style={styles.teamStatItem}>
+          <MaterialCommunityIcons name="crown" size={18} color="#D97706" />
+          <Text style={styles.teamStatValue}>{adminTeamCount}</Text>
+          <Text style={styles.teamStatLabel}>Leading</Text>
+        </View>
+        <View style={styles.teamStatDivider} />
+        <View style={styles.teamStatItem}>
+          <MaterialCommunityIcons name="account-multiple" size={18} color="#0284C7" />
+          <Text style={styles.teamStatValue}>
+            {activeTeam?.members?.length ?? 0}
+          </Text>
+          <Text style={styles.teamStatLabel}>Members</Text>
+        </View>
+        <View style={styles.teamStatDivider} />
+        <View style={styles.teamStatItem}>
+          <MaterialCommunityIcons name="format-list-numbered" size={18} color="#16A34A" />
+          <Text style={styles.teamStatValue}>
+            {teamCount}/{MAX_TEAMS}
+          </Text>
+          <Text style={styles.teamStatLabel}>Slots</Text>
+        </View>
+      </View>
+
+      {/* If selectedTeamId is null, show the user's teams FIRST, then Create/Join forms */}
       {!activeTeam ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <View style={{ paddingBottom: 20 }}>
+          {/* ✅ Your existing teams */}
+          {sortedTeams.length > 0 && (
+            <View style={{ marginBottom: 4 }}>
+              <Text style={styles.cardTitle}>Your Teams</Text>
+              {sortedTeams.map((t) => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.teamListItem}
+                  onPress={() => setSelectedTeamId(t.id)}
+                  activeOpacity={0.75}
+                >
+                  <View style={styles.teamListLeft}>
+                    <View
+                      style={[
+                        styles.teamListBadge,
+                        {
+                          backgroundColor: t.is_admin
+                            ? "#FEF3C7"
+                            : "#E0E7FF",
+                        },
+                      ]}
+                    >
+                      <MaterialCommunityIcons
+                        name={t.is_admin ? "crown" : "account"}
+                        size={16}
+                        color={t.is_admin ? "#B45309" : "#4F46E5"}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.teamListName} numberOfLines={1}>
+                        {t.name}
+                      </Text>
+                      <Text style={styles.teamListRole}>
+                        {t.is_admin ? "Admin" : "Member"} •{" "}
+                        {t.members?.length ?? 0} member
+                        {(t.members?.length ?? 0) === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* ✅ Create / Join forms (only shown when under the limit) */}
           {teams.length >= MAX_TEAMS ? (
             <View style={styles.limitCard}>
               <MaterialCommunityIcons
@@ -367,42 +491,42 @@ export default function MyTeamScreen() {
               </Text>
             </View>
           ) : (
-            <>
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Create Another Team</Text>
+            <View style={styles.twoColumnRow}>
+              <View style={styles.halfCard}>
+                <Text style={styles.halfCardTitle}>Create</Text>
                 <TextInput
-                  style={styles.input}
+                  style={styles.compactInput}
                   placeholder="Team Name"
                   value={teamName}
                   onChangeText={setTeamName}
                 />
                 <TouchableOpacity
-                  style={styles.btnPrimary}
+                  style={styles.btnPrimaryCompact}
                   onPress={handleCreate}
                 >
-                  <Text style={styles.btnText}>Create</Text>
+                  <Text style={styles.btnText}>Create Team</Text>
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.card}>
-                <Text style={styles.cardTitle}>Join Another Team</Text>
+              <View style={styles.halfCard}>
+                <Text style={styles.halfCardTitle}>Join</Text>
                 <TextInput
-                  style={styles.input}
-                  placeholder="Enter Join Code"
+                  style={styles.compactInput}
+                  placeholder="Join Code"
                   value={joinCode}
                   onChangeText={setJoinCode}
                   autoCapitalize="characters"
                 />
                 <TouchableOpacity
-                  style={styles.btnSecondary}
+                  style={styles.btnSecondaryCompact}
                   onPress={handleJoin}
                 >
-                  <Text style={styles.btnText}>Join</Text>
+                  <Text style={styles.btnText}>Join Team</Text>
                 </TouchableOpacity>
               </View>
-            </>
+            </View>
           )}
-        </ScrollView>
+        </View>
       ) : (
         /* Active Team Leaderboard */
         <>
@@ -438,19 +562,13 @@ export default function MyTeamScreen() {
 
           <Text style={styles.subtitle}>Leaderboard</Text>
 
-          <FlatList
-            data={leaderboard}
-            keyExtractor={(item: any) => item.user_id.toString()}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            refreshControl={
-              <RefreshControl refreshing={loading} onRefresh={fetchTeams} />
-            }
-            renderItem={({ item }: { item: any }) => {
+          <View style={{ paddingBottom: 20 }}>
+            {leaderboard.map((item: any) => {
               const isMe = item.user_id === activeTeam.current_user_id;
               const rank = rankFor(item.steps_today ?? 0);
 
               return (
-                <View style={[styles.row, isMe && styles.rowMe]}>
+                <View key={item.user_id} style={[styles.row, isMe && styles.rowMe]}>
                   <View style={styles.rankBadge}>
                     <Text style={styles.rankText}>{medalFor(rank)}</Text>
                   </View>
@@ -516,8 +634,8 @@ export default function MyTeamScreen() {
                   <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
                 </View>
               );
-            }}
-          />
+            })}
+          </View>
 
           {activeTeam.is_admin && (
             <TouchableOpacity
@@ -711,7 +829,7 @@ export default function MyTeamScreen() {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -986,4 +1104,102 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalBtnSaveText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
+
+  // ✅ NEW: team stats strip styles
+  teamStatsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    marginBottom: 10,
+  },
+  teamStatItem: { flex: 1, alignItems: "center", gap: 2 },
+  teamStatValue: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+  teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
+    // ✅ NEW: team list item styles
+  teamListItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: 8,
+  },
+  teamListLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    gap: 12,
+  },
+  teamListBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  teamListName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  teamListRole: {
+    fontSize: 12,
+    color: "#64748B",
+    marginTop: 2,
+  },
+
+  // ✅ NEW: inline create/join forms
+  twoColumnRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 20,
+  },
+  halfCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    padding: 12,
+  },
+  halfCardTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  compactInput: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#CBD5E1",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: "#0F172A",
+    marginBottom: 8,
+  },
+  btnPrimaryCompact: {
+    backgroundColor: "#16A34A",
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  btnSecondaryCompact: {
+    backgroundColor: "#0284C7",
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: "center",
+  },
 });
