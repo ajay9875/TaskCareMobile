@@ -6,7 +6,7 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
 export default function AdminTeamDetails() {
-  const { id } = useLocalSearchParams();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [team, setTeam] = useState<any>(null);
   const [loading, setLoading] = useState(true);

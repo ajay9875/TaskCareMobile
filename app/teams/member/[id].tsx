@@ -4,12 +4,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
@@ -88,7 +88,11 @@ type MemberInfo = {
 };
 
 export default function TeamMemberHistory() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // 1. Update the params destructuring at the top
+  const { id, team_id } = useLocalSearchParams<{
+    id: string;
+    team_id: string;
+  }>();
   const router = useRouter();
 
   const [userInfo, setUserInfo] = useState<MemberInfo | null>(null);
@@ -114,10 +118,13 @@ export default function TeamMemberHistory() {
 
     try {
       // ✅ Team-admin scoped endpoint
-      const res = await fetch(`${API_BASE}/teams/member/${id}/history`, {
-        credentials: "include",
-        signal: controller.signal,
-      });
+      const res = await fetch(
+        `${API_BASE}/teams/member/${id}/history?team_id=${team_id}`,
+        {
+          credentials: "include",
+          signal: controller.signal,
+        },
+      );
 
       if (res.status === 401) {
         clearTimeout(timeoutId);

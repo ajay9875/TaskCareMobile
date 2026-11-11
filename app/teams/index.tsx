@@ -470,7 +470,10 @@ export default function MyTeamScreen() {
                       }
                       router.push({
                         pathname: "/teams/member/[id]",
-                        params: { id: item.user_id },
+                        params: { 
+                          id: item.user_id,
+                          team_id: activeTeam.id // ✅ Pass the active team ID
+                        },
                       });
                     }}
                   >
