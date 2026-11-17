@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import AuthDialog from "../components/AuthDialog";
+import FestivalBlock from "../components/FestivalBlock";
 import { useAuth } from "../context/AuthContext";
 
 export default function LandingScreen() {
@@ -128,9 +129,9 @@ export default function LandingScreen() {
       )}
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <FestivalBlock />
         <Text style={styles.shortSubtext}>
-          Stay fit, productive, and organized! Track your daily physical health
-          and manage your priorities seamlessly all in one place.
+          Stay fit, productive and organized. All in one place.
         </Text>
 
         {/* ⭐ TRUST METRICS */}
@@ -534,7 +535,6 @@ export default function LandingScreen() {
           </View>
         </View>
       </ScrollView>
-
       <View style={styles.bottomActionContainer}>
         {isLoggedIn ? (
           <TouchableOpacity
@@ -554,7 +554,6 @@ export default function LandingScreen() {
           </TouchableOpacity>
         )}
       </View>
-
       {/* ✅ REPLACED MODAL WITH REUSABLE COMPONENT */}
       <AuthDialog
         visible={isGuestDialogVisible}

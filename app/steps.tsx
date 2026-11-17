@@ -360,16 +360,29 @@ export default function StepsScreen() {
       setCurrentTime(new Date());
     }, 1000);
 
-    // ✅ Data poll timer (every 30 seconds)
-    const dataPollTimer = setInterval(() => {
-      fetchCloudMetrics();
-    }, 30000); // 30 seconds
+    // ✅ SMART POLLING: Check every 4 seconds
+    const dataPollTimer = setInterval(async () => {
+      const { getQueueSize } = require("../utils/stepTracker");
+      
+      const queueSize = await getQueueSize();
+      
+      if (queueSize > 0) {
+        // 💡 PRO TIP: Only fetch if we are actually connected to the internet
+        // If you don't have NetInfo installed, you can remove this inner check.
+        const NetInfo = require("@react-native-community/netinfo").default;
+        const netState = await NetInfo.fetch();
+        
+        if (netState.isConnected && netState.isInternetReachable !== false) {
+          fetchCloudMetrics(); 
+        }
+      }
+    }, 4000);
 
     return () => {
       syncListener.remove();
       stepTakeListener.remove();
-      clearInterval(clockTimer);   // ✅ Change this
-      clearInterval(dataPollTimer); // ✅ Add this
+      clearInterval(clockTimer);
+      clearInterval(dataPollTimer);
     };
   }, []);
 

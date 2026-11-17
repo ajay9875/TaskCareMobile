@@ -37,7 +37,7 @@ const doRegister = async (): Promise<string | null> => {
   // Android channel setup (safe to call on both emulator and device)
   if (Platform.OS === 'android') {
     try {
-      await Notifications.setNotificationChannelAsync('default', {
+      await Notifications.setNotificationChannelAsync('default-v2', {
         name: 'FitWisely',
         importance: Notifications.AndroidImportance.HIGH,
         vibrationPattern: [0, 250, 250, 250],

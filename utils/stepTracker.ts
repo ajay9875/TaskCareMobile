@@ -41,7 +41,7 @@ const STEP_COUNT_TASK = "taskcare360-step-count-task";
 const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
-const FOREGROUND_POLL_MS = 30000;
+const FOREGROUND_POLL_MS = 2000;
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
@@ -330,7 +330,10 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
     //    (native tracker reported the same physical steps).
     const targetBaseline = Math.max(serverTotal, todaySteps);
     if (targetBaseline > lastSyncedLocal) {
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, targetBaseline.toString());
+      await AsyncStorage.setItem(
+        LAST_SYNCED_COUNT_KEY,
+        targetBaseline.toString(),
+      );
       console.log(
         `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${targetBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
       );
@@ -703,4 +706,3 @@ export const stopStepTracker = async () => {
 export const getPendingQueue = readQueue;
 export const getQueueSize = async (): Promise<number> =>
   (await readQueue()).length;
-   

@@ -484,7 +484,7 @@ function MainLayout() {
                     onPress={() => {
                       setHeaderModalVisible(false);
                       Linking.openURL(
-                        "mailto:taskcare360@gmail.com?subject=Support%20Request",
+                        "mailto:info.fitwisely@gmail.com?subject=Support%20Request&body=Hi%20FitWisely%20Team,%0A%0AI%20need%20help%20with..."
                       );
                     }}
                   >

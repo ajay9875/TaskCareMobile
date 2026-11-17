@@ -115,7 +115,7 @@ export default function Signup() {
 
         <TextInput
           style={styles.input}
-          placeholder="Enter Email"
+          placeholder="Email Address"
           placeholderTextColor="#666"
           value={email}
           keyboardType="email-address"

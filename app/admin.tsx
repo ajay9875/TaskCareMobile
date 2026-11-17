@@ -1,7 +1,7 @@
 // app/admin.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -370,33 +370,6 @@ export default function AdminPanel() {
           onPress={() => setActiveTab("users")}
         >
 
-      {/* ✅ NEW: Admin Stats Strip */}
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="account-group" size={20} color="#4F46E5" />
-          <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
-          <Text style={styles.statLabel}>Users</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="check-circle" size={20} color="#16A34A" />
-          <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
-          <Text style={styles.statLabel}>Online</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="account-multiple" size={20} color="#D97706" />
-          <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
-          <Text style={styles.statLabel}>Teams</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
-          <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
-          <Text style={styles.statLabel}>Members</Text>
-        </View>
-      </View>
-
           <Text
             style={{
               fontWeight: "bold",
@@ -425,6 +398,33 @@ export default function AdminPanel() {
             Teams ({teams.length})
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* ✅ NEW: Admin Stats Strip */}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="account-group" size={20} color="#4F46E5" />
+          <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
+          <Text style={styles.statLabel}>Users</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="check-circle" size={20} color="#16A34A" />
+          <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
+          <Text style={styles.statLabel}>Online</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="account-multiple" size={20} color="#D97706" />
+          <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
+          <Text style={styles.statLabel}>Teams</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
+          <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
+          <Text style={styles.statLabel}>Members</Text>
+        </View>
       </View>
 
       {activeTab === "users" ? (
