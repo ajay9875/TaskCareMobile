@@ -85,6 +85,24 @@ export default function AdminPanel() {
   } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
+    // ✅ NEW: Admin Stats calculation
+  const adminStats = useMemo(() => {
+    const totalUsers = users.length;
+    const onlineUsers = users.filter((u) => u.state === "online").length;
+    const totalTeams = teams.length;
+    
+    // Count unique members across all teams
+    // (Assuming you might not have a direct 'members' array in AdminTeam, we use member_count)
+    const totalMemberships = teams.reduce((sum, t) => sum + (t.member_count || 0), 0);
+
+    return {
+      totalUsers,
+      onlineUsers,
+      totalTeams,
+      totalMemberships,
+    };
+  }, [users, teams]);
+
   // ─────────────────────────────────────────────────────────────
   // OPEN DELETE MODAL
   // ─────────────────────────────────────────────────────────────
@@ -351,6 +369,34 @@ export default function AdminPanel() {
           }}
           onPress={() => setActiveTab("users")}
         >
+
+      {/* ✅ NEW: Admin Stats Strip */}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="account-group" size={20} color="#4F46E5" />
+          <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
+          <Text style={styles.statLabel}>Users</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="check-circle" size={20} color="#16A34A" />
+          <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
+          <Text style={styles.statLabel}>Online</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="account-multiple" size={20} color="#D97706" />
+          <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
+          <Text style={styles.statLabel}>Teams</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
+          <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
+          <Text style={styles.statLabel}>Members</Text>
+        </View>
+      </View>
+
           <Text
             style={{
               fontWeight: "bold",
@@ -635,6 +681,42 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0F172A",
     marginTop: 8,
+  },
+
+    // ✅ NEW: Stats Strip Styles
+  statsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  statItem: {
+    flex: 1,
+    alignItems: "center",
+    gap: 2,
+  },
+  statValue: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  statLabel: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+  statDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "#E2E8F0",
   },
 
   // PIN Input Styles
