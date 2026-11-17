@@ -2,7 +2,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState } from "react";
-
+import { BackHandler } from "react-native";
 import {
   ActivityIndicator,
   Alert,
@@ -54,6 +54,27 @@ export default function MyTeamScreen() {
 
   const router = useRouter();
   const { prefill } = useLocalSearchParams<{ prefill?: string }>();
+
+    // ✅ INTERCEPT BACK BUTTON WHEN A TEAM IS SELECTED
+  useEffect(() => {
+    const onBackPress = () => {
+      // If a specific team is open, close it and stay on this screen
+      if (selectedTeamId !== null) {
+        setSelectedTeamId(null);
+        return true; // 👈 Tells Android "I handled it, don't go to Home"
+      }
+      
+      // If no team is open, let the default back action happen (go to Home)
+      return false;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+
+    return () => subscription.remove();
+  }, [selectedTeamId]);
 
   // Deep-link prefill
   useEffect(() => {
