@@ -54,7 +54,62 @@ type AdminTeam = {
   created_by: string;
   created_at_label: string;
   member_count: number;
+  online_member_count?: number;       // NEW
+  signed_in_member_count?: number;    // NEW
 };
+
+// ── Status pill (mirrors app/teams/member/[id].tsx) ──
+function statusColorFor(state?: string): string {
+  switch (state) {
+    case "online":
+      return "#16A34A";
+    case "signed_out":
+      return "#DC2626";
+    case "offline":
+      return "#94A3B8";
+    case "never":
+    default:
+      return "#94A3B8";
+  }
+}
+
+function StatusPill({
+  state,
+  label,
+  isSignedIn,
+}: {
+  state?: string;
+  label?: string;
+  isSignedIn?: boolean;
+}) {
+  const color = statusColorFor(state);
+  const signedInColor = isSignedIn ? "#16A34A" : "#DC2626";
+
+  return (
+    <View style={styles.pillRow}>
+      {/* activity pill */}
+      <View style={styles.statusPill}>
+        <View style={[styles.statusDot, { backgroundColor: color }]} />
+        <Text style={[styles.statusPillText, { color }]} numberOfLines={1}>
+          {label ?? "Not active yet"}
+        </Text>
+      </View>
+
+      {/* signed in / out pill */}
+      <View style={styles.statusPill}>
+        <View
+          style={[styles.statusDot, { backgroundColor: signedInColor }]}
+        />
+        <Text
+          style={[styles.statusPillText, { color: signedInColor }]}
+          numberOfLines={1}
+        >
+          {isSignedIn ? "Signed In" : "Signed Out"}
+        </Text>
+      </View>
+    </View>
+  );
+}
 
 export default function AdminPanel() {
   const router = useRouter();
@@ -475,6 +530,12 @@ export default function AdminPanel() {
                     <Text style={styles.rowMeta} numberOfLines={1}>
                       Created {item.created_at_label ?? "—"} • ID #{item.id}
                     </Text>
+                    {/* ✅ NEW: status pills */}
+                    <StatusPill
+                      state={item.state}
+                      label={item.label}
+                      isSignedIn={item.is_signed_in}
+                    />
                   </View>
                 </TouchableOpacity>
 
@@ -553,6 +614,21 @@ export default function AdminPanel() {
                       Created {item.created_at_label} • {item.member_count}{" "}
                       members
                     </Text>
+                    {/* ✅ NEW: aggregate pills */}
+                    <View style={styles.pillRow}>
+                      <View style={styles.statusPill}>
+                        <View style={[styles.statusDot, { backgroundColor: "#16A34A" }]} />
+                        <Text style={[styles.statusPillText, { color: "#16A34A" }]}>
+                          {item.online_member_count ?? 0} online
+                        </Text>
+                      </View>
+                      <View style={styles.statusPill}>
+                        <View style={[styles.statusDot, { backgroundColor: "#0284C7" }]} />
+                        <Text style={[styles.statusPillText, { color: "#0284C7" }]}>
+                          {item.signed_in_member_count ?? 0} signed in
+                        </Text>
+                      </View>
+                    </View>
                   </View>
                 </TouchableOpacity>
 
@@ -676,6 +752,34 @@ export default function AdminPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
+  pillRow: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  gap: 6,
+  marginTop: 6,
+},
+statusPill: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#F1F5F9",
+  paddingHorizontal: 8,
+  paddingVertical: 3,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: "#E2E8F0",
+  gap: 5,
+  maxWidth: "100%",
+},
+statusDot: {
+  width: 6,
+  height: 6,
+  borderRadius: 3,
+},
+statusPillText: {
+  fontSize: 11,
+  fontWeight: "700",
+  letterSpacing: 0.2,
+},
   headerTitle: {
     fontSize: 24,
     fontWeight: "800",
