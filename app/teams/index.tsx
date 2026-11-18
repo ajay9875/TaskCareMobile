@@ -152,6 +152,27 @@ export default function MyTeamScreen() {
     return (team?.members ?? []).filter((m: any) => !!m.is_signed_in).length;
   }
 
+  // Add these helper functions
+function allTeamsOnlineCount(): number {
+  const uniqueUsers = new Set();
+  teams.forEach(t => {
+    (t.members ?? []).forEach((m: any) => {
+      if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
+    });
+  });
+  return uniqueUsers.size;
+}
+
+function allTeamsSignedInCount(): number {
+  const uniqueUsers = new Set();
+  teams.forEach(t => {
+    (t.members ?? []).forEach((m: any) => {
+      if (m.is_signed_in) uniqueUsers.add(m.user_id);
+    });
+  });
+  return uniqueUsers.size;
+}
+
   // Leaderboard sorting
   const leaderboard = useMemo(() => {
     if (!activeTeam?.members) return [];
@@ -507,18 +528,22 @@ export default function MyTeamScreen() {
               size={18}
               color="#16A34A"
             />
-            <Text style={styles.teamStatValue}>
-              {activeTeam ? teamOnlineCount(activeTeam) : "—"}
-            </Text>
-            <Text style={styles.teamStatLabel}>Online</Text>
+          <Text style={styles.teamStatValue}>
+            {activeTeam ? teamOnlineCount(activeTeam) : allTeamsOnlineCount()}
+          </Text>
+          <Text style={styles.teamStatLabel}>
+            {activeTeam ? "Online" : "Total Online"}
+          </Text>
           </View>
           <View style={styles.teamStatDivider} />
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons name="login" size={18} color="#0284C7" />
             <Text style={styles.teamStatValue}>
-              {activeTeam ? teamSignedInCount(activeTeam) : "—"}
+              {activeTeam ? teamSignedInCount(activeTeam) : allTeamsSignedInCount()}
             </Text>
-            <Text style={styles.teamStatLabel}>Signed In</Text>
+            <Text style={styles.teamStatLabel}>
+              {activeTeam ? "Signed In" : "Total Signed In"}
+            </Text>
           </View>
           <View style={styles.teamStatDivider} />
           <View style={styles.teamStatItem}>
