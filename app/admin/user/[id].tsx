@@ -15,66 +15,6 @@ import Svg, { Circle } from "react-native-svg";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
-const CustomProgressRing = ({ percentage }: { percentage: number }) => {
-  const radius = 42;
-  const strokeWidth = 6;
-  const circumference = 2 * Math.PI * radius;
-  const safePercent = isNaN(percentage)
-    ? 0
-    : Math.min(100, Math.max(0, percentage));
-  const strokeDashoffset = circumference - (safePercent / 100) * circumference;
-
-  return (
-    <View
-      style={{
-        width: 100,
-        height: 100,
-        alignItems: "center",
-        justifyContent: "center",
-        marginVertical: 10,
-      }}
-    >
-      <Svg
-        width="100"
-        height="100"
-        viewBox="0 0 100 100"
-        style={{ transform: [{ rotate: "-90deg" }] }}
-      >
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#ffffff15"
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#4ecca3"
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </Svg>
-      <View
-        style={{
-          position: "absolute",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ fontSize: 18, fontWeight: "800", color: "#ffffff" }}>
-          {Math.round(safePercent)}%
-        </Text>
-      </View>
-    </View>
-  );
-};
-
 type AdminUserInfo = {
   id: number;
   name: string;
@@ -141,17 +81,20 @@ export default function AdminUserHistory() {
         setHistory((json.history || []).filter((i: any) => i && i.date));
         setSummary(json.summary || null);
 
-        // Use backend data
         const isOnline = json.user?.status_state === "online";
-        
+
         setStatus({
           state: json.user?.status_state ?? "never",
-          // If they are online, just show "Active now". Otherwise use the backend label.
-          label: isOnline ? "Active now" : (json.user?.status_label ?? "Not active yet"),
-          color: isOnline ? "#16A34A" : 
-                 json.user?.status_state === "signed_out" ? "#DC2626" : "#94A3B8",
+          label: isOnline
+            ? "Active now"
+            : (json.user?.status_label ?? "Not active yet"),
+          color: isOnline
+            ? "#16A34A"
+            : json.user?.status_state === "signed_out"
+              ? "#DC2626"
+              : "#94A3B8",
         });
-        
+
         setTarget(json.user?.target_steps ?? 5000);
         setHasNetError(false);
       }
@@ -164,7 +107,7 @@ export default function AdminUserHistory() {
     }
   };
 
-  // ─── User header block — name, email, user_id ────────────────
+  // ─── User header block ────────────────────────────────────────
   const renderUserHeader = () => {
     if (!userInfo) return null;
     const initial = userInfo.name?.trim().charAt(0).toUpperCase() || "?";
@@ -184,7 +127,6 @@ export default function AdminUserHistory() {
           </Text>
           <Text style={styles.userId}>User ID #{userInfo.id}</Text>
 
-          {/* status meta row */}
           <View
             style={{
               flexDirection: "row",
@@ -193,7 +135,6 @@ export default function AdminUserHistory() {
               gap: 6,
             }}
           >
-            {/* Live status pill */}
             {status && (
               <View style={styles.metaPill}>
                 <View
@@ -204,7 +145,6 @@ export default function AdminUserHistory() {
                 </Text>
               </View>
             )}
-            {/* Signed-in pill */}
             <View style={styles.metaPill}>
               <View
                 style={[styles.metaDot, { backgroundColor: signedInColor }]}
@@ -213,7 +153,6 @@ export default function AdminUserHistory() {
                 {signedInLabel}
               </Text>
             </View>
-            {/* Target pill */}
             <View style={styles.metaPill}>
               <Ionicons name="flag-outline" size={11} color="#4ecca3" />
               <Text style={[styles.metaPillText, { color: "#4ecca3" }]}>
@@ -226,7 +165,7 @@ export default function AdminUserHistory() {
     );
   };
 
-  // ─── Everything below is a direct copy of history.tsx ────────
+  // ─── Lifetime summary: Walking | Activity ────────────────────
   const renderHeaderSummary = () => {
     if (history.length === 0) return null;
     return (
@@ -251,44 +190,6 @@ export default function AdminUserHistory() {
                 {summary?.days_tracked ?? history.length} days tracked
               </Text>
             )}
-          </View>
-        </View>
-
-        <View style={styles.summarySplitRow}>
-          <View style={styles.summaryColumn}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons name="walk" size={14} color="#4ecca3" />
-              <Text style={styles.summaryColLabel}>WALKING</Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.walking_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.walking_km?.display ?? "0"} KM •{" "}
-              {summary?.walking_cal?.display ?? "0"} CAL
-            </Text>
-          </View>
-
-          <View style={[styles.summaryColumn, styles.summaryColumnDivider]}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons
-                name="run-fast"
-                size={14}
-                color="#ff6b35"
-              />
-              <Text style={[styles.summaryColLabel, { color: "#ff6b35" }]}>
-                TREADMILL
-              </Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.treadmill_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.treadmill_km?.display ?? "0"} KM •{" "}
-              {summary?.treadmill_cal?.display ?? "0"} CAL
-            </Text>
           </View>
         </View>
 
@@ -344,24 +245,32 @@ export default function AdminUserHistory() {
     const dayTarget = item.target_steps || target || 5000;
     const walkSteps =
       item.walking_steps !== undefined ? item.walking_steps : item.steps || 0;
-    const treadSteps =
-      item.treadmill_steps !== undefined ? item.treadmill_steps : 0;
 
     const walkKm = (walkSteps * 0.000762).toFixed(2);
     const walkCal = (walkSteps * 0.04).toFixed(0);
-    const treadKm = (treadSteps * 0.000762).toFixed(2);
-    const treadCal = (treadSteps * 0.0575).toFixed(0);
-    const combinedSteps = walkSteps + treadSteps;
-    const combinedKm = (combinedSteps * 0.000762).toFixed(2);
-    const combinedCal = (parseInt(walkCal) + parseInt(treadCal)).toString();
-    const stepsLeft = Math.max(0, dayTarget - combinedSteps);
-    const percentage = Math.min(100, (combinedSteps / dayTarget) * 100);
+
+    const pace =
+      walkSteps > 0 ? (1000 / (walkSteps * 0.000762)).toFixed(1) : "0.0";
+    const stepsPerKm =
+      walkSteps > 0
+        ? Math.round(walkSteps / Math.max(0.01, parseFloat(walkKm)))
+        : 0;
+
+    const stepsLeft = Math.max(0, dayTarget - walkSteps);
+    const percentage = Math.min(100, (walkSteps / dayTarget) * 100);
+
+    // Thin Ring Math
+    const radius = 38;
+    const strokeWidth = 5;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
     return (
       <View style={styles.card}>
         <Text style={styles.dateText}>{item.date_full ?? item.date}</Text>
+
         <View style={styles.modeSplitRow}>
-          <View style={styles.modeColumn}>
+          <View style={[styles.modeColumn, { flex: 1.1 }]}>
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons name="walk" size={18} color="#4ecca3" />
               <Text style={styles.columnHeading}>WALKING</Text>
@@ -385,44 +294,47 @@ export default function AdminUserHistory() {
           <View
             style={[
               styles.modeColumn,
-              { borderLeftWidth: 1, borderColor: "#ffffff15", paddingLeft: 15 },
+              {
+                borderLeftWidth: 1,
+                borderColor: "#ffffff15",
+                paddingLeft: 15,
+                flex: 0.9,
+              },
             ]}
           >
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons
-                name="run-fast"
+                name="speedometer"
                 size={18}
                 color="#4ecca3"
               />
-              <Text style={styles.columnHeading}>TREADMILL</Text>
+              <Text style={styles.columnHeading}>METRICS</Text>
             </View>
             <View style={styles.modeStatBlock}>
-              <Text style={styles.modeStatVal}>
-                {treadSteps.toLocaleString()}
+              <Text style={styles.modeStatVal}>{pace}</Text>
+              <Text style={styles.modeStatLabel}>PACE (MIN/KM)</Text>
+              <Text style={styles.modeStatVal}>{stepsPerKm}</Text>
+              <Text style={styles.modeStatLabel}>STEPS / KM</Text>
+              <Text style={[styles.modeStatVal, { color: "#4ecca3" }]}>
+                {Math.round(percentage)}%{" "}
+                <Text style={styles.unitText}>DONE</Text>
               </Text>
-              <Text style={styles.modeStatLabel}>STEPS</Text>
-              <Text style={styles.modeStatVal}>
-                {treadKm} <Text style={styles.unitText}>KM</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>DISTANCE</Text>
-              <Text style={[styles.modeStatVal, { color: "#ff6b35" }]}>
-                {treadCal} <Text style={styles.unitText}>CAL</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>ENERGY</Text>
+              <Text style={styles.modeStatLabel}>GOAL PROGRESS</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.combinedDivider} />
-        <Text style={styles.combinedHeading}>COMBINED PERFORMANCE</Text>
 
-        <View style={styles.combinedContent}>
-          <View style={styles.combinedMetrics}>
+        <Text style={styles.combinedHeading}>DAILY GOAL PROGRESS</Text>
+
+        <View style={styles.progressLayoutWrapper}>
+          <View style={styles.numbersColumn}>
             <View style={styles.stepMetricItem}>
-              <Ionicons name="checkmark-circle" size={20} color="#4ecca3" />
+              <Ionicons name="checkmark-circle" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
-                  {combinedSteps.toLocaleString()}
+                  {walkSteps.toLocaleString()}
                 </Text>
                 <Text style={styles.stepMetricLabel}>TOTAL STEPS</Text>
               </View>
@@ -431,8 +343,8 @@ export default function AdminUserHistory() {
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
               <Ionicons
                 name="flag"
-                size={20}
-                color={stepsLeft === 0 ? "#4ecca3" : "#a4b0be"}
+                size={18}
+                color={stepsLeft === 0 ? "#4ecca3" : "#ff6b35"}
               />
               <View style={styles.textDataContainer}>
                 <Text
@@ -443,12 +355,12 @@ export default function AdminUserHistory() {
                 >
                   {stepsLeft.toLocaleString()}
                 </Text>
-                <Text style={styles.stepMetricLabel}>STEPS REMAINING</Text>
+                <Text style={styles.stepMetricLabel}>STEPS LEFT</Text>
               </View>
             </View>
 
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
-              <Ionicons name="trending-up" size={20} color="#4ecca3" />
+              <Ionicons name="trending-up" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
                   {dayTarget.toLocaleString()}
@@ -458,32 +370,37 @@ export default function AdminUserHistory() {
             </View>
           </View>
 
-          <View style={styles.imageRingContainer}>
-            <CustomProgressRing percentage={percentage} />
-            <View style={styles.imageSeparatorLine} />
-            <View style={styles.imageMetricsArea}>
-              <View style={styles.imageMetricBadgeRow}>
-                <Ionicons
-                  name="location"
-                  size={18}
-                  color="#4ecca3"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={styles.imageStatText}>
-                  {combinedKm} <Text style={styles.imageLabelText}>KM</Text>
-                </Text>
-              </View>
-              <View style={[styles.imageMetricBadgeRow, { marginTop: 6 }]}>
-                <MaterialCommunityIcons
-                  name="fire"
-                  size={18}
-                  color="#ff6b35"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.imageStatText, { color: "#ff6b35" }]}>
-                  {combinedCal} <Text style={styles.imageLabelText}>CAL</Text>
-                </Text>
-              </View>
+          <View style={styles.thinRingWrapper}>
+            <Svg
+              width="90"
+              height="90"
+              viewBox="0 0 90 90"
+              style={{ transform: [{ rotate: "-90deg" }] }}
+            >
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#ffffff08"
+                strokeWidth={strokeWidth}
+                fill="none"
+              />
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#4ecca3"
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <View style={styles.ringTextContainer}>
+              <Text style={styles.ringPercentText}>
+                {Math.round(percentage)}%
+              </Text>
             </View>
           </View>
         </View>
@@ -629,7 +546,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
   },
 
-  /* ── Below: identical to history.tsx styles ── */
+  /* Summary card */
   summaryDaysText: {
     color: "#4ecca3",
     fontSize: 11,
@@ -745,6 +662,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 4,
   },
+
+  /* Day card */
   card: {
     backgroundColor: "#ffffff09",
     padding: 18,
@@ -812,12 +731,16 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     textAlign: "left",
   },
-  combinedContent: {
+  progressLayoutWrapper: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    width: "100%",
   },
-  combinedMetrics: { flex: 1.1, paddingRight: 5 },
+  numbersColumn: {
+    flexDirection: "column",
+    justifyContent: "center",
+  },
   stepMetricItem: { flexDirection: "row", alignItems: "center", gap: 12 },
   textDataContainer: { flexDirection: "column" },
   stepText: {
@@ -833,38 +756,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     marginTop: 2,
   },
-  imageRingContainer: {
-    flex: 0.9,
-    alignItems: "center",
+  thinRingWrapper: {
+    width: 90,
+    height: 90,
     justifyContent: "center",
-    paddingLeft: 10,
+    alignItems: "center",
   },
-  imageSeparatorLine: {
-    width: "85%",
-    height: 1,
-    backgroundColor: "#ffffff15",
-    marginVertical: 14,
-  },
-  imageMetricsArea: {
-    width: "100%",
+  ringTextContainer: {
+    position: "absolute",
     alignItems: "center",
     justifyContent: "center",
   },
-  imageMetricBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imageStatText: {
+  ringPercentText: {
     color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  imageLabelText: {
-    color: "#a4b0be",
     fontSize: 14,
     fontWeight: "600",
+    letterSpacing: 0,
   },
+
+  /* Empty state */
   emptyContainer: {
     flex: 1,
     justifyContent: "center",

@@ -251,69 +251,30 @@ export default function TeamMemberHistory() {
             <Text style={styles.summaryTitleSubtext}>
               Member Fitness Journey
             </Text>
-            {history.length > 1 && (
-              <Text style={styles.summaryDaysText}>
-                {summary?.days_tracked ?? history.length} days tracked
-              </Text>
-            )}
           </View>
         </View>
 
-        <View style={styles.summarySplitRow}>
-          <View style={styles.summaryColumn}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons name="walk" size={14} color="#4ecca3" />
-              <Text style={styles.summaryColLabel}>WALKING</Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.walking_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.walking_km?.display ?? "0"} KM •{" "}
-              {summary?.walking_cal?.display ?? "0"} CAL
-            </Text>
-          </View>
-          <View style={[styles.summaryColumn, styles.summaryColumnDivider]}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons
-                name="run-fast"
-                size={14}
-                color="#ff6b35"
-              />
-              <Text style={[styles.summaryColLabel, { color: "#ff6b35" }]}>
-                TREADMILL
-              </Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.treadmill_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.treadmill_km?.display ?? "0"} KM •{" "}
-              {summary?.treadmill_cal?.display ?? "0"} CAL
-            </Text>
-          </View>
-        </View>
-
+        {/* ✅ Triple Metric Strip matching app/history.tsx */}
         <View style={styles.summaryTotalStrip}>
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="shoe-print"
               size={16}
-              color="#ffffff"
+              color="#4ecca3"
             />
-            <Text style={styles.stripLabel}>TOTAL STEPS</Text>
+            <Text style={styles.stripLabel}>STEPS</Text>
             <Text style={styles.stripVal}>
               {summary?.combined_steps?.display ?? "—"}
             </Text>
           </View>
+          
           <View style={styles.stripMetricDivider} />
+          
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="map-marker-distance"
               size={16}
-              color="#ffffff"
+              color="#4ecca3"
             />
             <Text style={styles.stripLabel}>DISTANCE</Text>
             <Text style={styles.stripVal}>
@@ -321,13 +282,18 @@ export default function TeamMemberHistory() {
               <Text style={styles.unitText}>KM</Text>
             </Text>
           </View>
+
           <View style={styles.stripMetricDivider} />
+          
           <View style={styles.stripMetric}>
-            <MaterialCommunityIcons name="fire" size={16} color="#ff6b35" />
-            <Text style={styles.stripLabel}>ENERGY</Text>
-            <Text style={[styles.stripVal, { color: "#ff6b35" }]}>
-              {summary?.combined_cal?.display ?? "0"}{" "}
-              <Text style={styles.unitText}>CAL</Text>
+            <MaterialCommunityIcons
+              name="calendar-check"
+              size={16}
+              color="#4ecca3"
+            />
+            <Text style={styles.stripLabel}>DAYS ACTIVE</Text>
+            <Text style={styles.stripVal}>
+              {summary?.days_tracked ?? history.length}
             </Text>
           </View>
         </View>
@@ -348,24 +314,32 @@ export default function TeamMemberHistory() {
     const dayTarget = item.target_steps || target || 5000;
     const walkSteps =
       item.walking_steps !== undefined ? item.walking_steps : item.steps || 0;
-    const treadSteps =
-      item.treadmill_steps !== undefined ? item.treadmill_steps : 0;
 
     const walkKm = (walkSteps * 0.000762).toFixed(2);
     const walkCal = (walkSteps * 0.04).toFixed(0);
-    const treadKm = (treadSteps * 0.000762).toFixed(2);
-    const treadCal = (treadSteps * 0.0575).toFixed(0);
-    const combinedSteps = walkSteps + treadSteps;
-    const combinedKm = (combinedSteps * 0.000762).toFixed(2);
-    const combinedCal = (parseInt(walkCal) + parseInt(treadCal)).toString();
-    const stepsLeft = Math.max(0, dayTarget - combinedSteps);
-    const percentage = Math.min(100, (combinedSteps / dayTarget) * 100);
+
+    const pace =
+      walkSteps > 0 ? (1000 / (walkSteps * 0.000762)).toFixed(1) : "0.0";
+    const stepsPerKm =
+      walkSteps > 0
+        ? Math.round(walkSteps / Math.max(0.01, parseFloat(walkKm)))
+        : 0;
+
+    const stepsLeft = Math.max(0, dayTarget - walkSteps);
+    const percentage = Math.min(100, (walkSteps / dayTarget) * 100);
+
+    // Thin Ring Math
+    const radius = 38;
+    const strokeWidth = 5;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
     return (
       <View style={styles.card}>
         <Text style={styles.dateText}>{item.date_full ?? item.date}</Text>
+
         <View style={styles.modeSplitRow}>
-          <View style={styles.modeColumn}>
+          <View style={[styles.modeColumn, { flex: 1.1 }]}>
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons name="walk" size={18} color="#4ecca3" />
               <Text style={styles.columnHeading}>WALKING</Text>
@@ -385,56 +359,62 @@ export default function TeamMemberHistory() {
               <Text style={styles.modeStatLabel}>ENERGY</Text>
             </View>
           </View>
+
           <View
             style={[
               styles.modeColumn,
-              { borderLeftWidth: 1, borderColor: "#ffffff15", paddingLeft: 15 },
+              {
+                borderLeftWidth: 1,
+                borderColor: "#ffffff15",
+                paddingLeft: 15,
+                flex: 0.9,
+              },
             ]}
           >
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons
-                name="run-fast"
+                name="speedometer"
                 size={18}
                 color="#4ecca3"
               />
-              <Text style={styles.columnHeading}>TREADMILL</Text>
+              <Text style={styles.columnHeading}>METRICS</Text>
             </View>
             <View style={styles.modeStatBlock}>
-              <Text style={styles.modeStatVal}>
-                {treadSteps.toLocaleString()}
+              <Text style={styles.modeStatVal}>{pace}</Text>
+              <Text style={styles.modeStatLabel}>PACE (MIN/KM)</Text>
+              <Text style={styles.modeStatVal}>{stepsPerKm}</Text>
+              <Text style={styles.modeStatLabel}>STEPS / KM</Text>
+              <Text style={[styles.modeStatVal, { color: "#4ecca3" }]}>
+                {Math.round(percentage)}%{" "}
+                <Text style={styles.unitText}>DONE</Text>
               </Text>
-              <Text style={styles.modeStatLabel}>STEPS</Text>
-              <Text style={styles.modeStatVal}>
-                {treadKm} <Text style={styles.unitText}>KM</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>DISTANCE</Text>
-              <Text style={[styles.modeStatVal, { color: "#ff6b35" }]}>
-                {treadCal} <Text style={styles.unitText}>CAL</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>ENERGY</Text>
+              <Text style={styles.modeStatLabel}>GOAL PROGRESS</Text>
             </View>
           </View>
         </View>
 
         <View style={styles.combinedDivider} />
-        <Text style={styles.combinedHeading}>COMBINED PERFORMANCE</Text>
 
-        <View style={styles.combinedContent}>
-          <View style={styles.combinedMetrics}>
+        <Text style={styles.combinedHeading}>DAILY GOAL PROGRESS</Text>
+
+        <View style={styles.progressLayoutWrapper}>
+          {/* Left side: Numbers */}
+          <View style={styles.numbersColumn}>
             <View style={styles.stepMetricItem}>
-              <Ionicons name="checkmark-circle" size={20} color="#4ecca3" />
+              <Ionicons name="checkmark-circle" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
-                  {combinedSteps.toLocaleString()}
+                  {walkSteps.toLocaleString()}
                 </Text>
                 <Text style={styles.stepMetricLabel}>TOTAL STEPS</Text>
               </View>
             </View>
+
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
               <Ionicons
                 name="flag"
-                size={20}
-                color={stepsLeft === 0 ? "#4ecca3" : "#a4b0be"}
+                size={18}
+                color={stepsLeft === 0 ? "#4ecca3" : "#ff6b35"}
               />
               <View style={styles.textDataContainer}>
                 <Text
@@ -445,11 +425,12 @@ export default function TeamMemberHistory() {
                 >
                   {stepsLeft.toLocaleString()}
                 </Text>
-                <Text style={styles.stepMetricLabel}>STEPS REMAINING</Text>
+                <Text style={styles.stepMetricLabel}>STEPS LEFT</Text>
               </View>
             </View>
+
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
-              <Ionicons name="trending-up" size={20} color="#4ecca3" />
+              <Ionicons name="trending-up" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
                   {dayTarget.toLocaleString()}
@@ -458,32 +439,39 @@ export default function TeamMemberHistory() {
               </View>
             </View>
           </View>
-          <View style={styles.imageRingContainer}>
-            <CustomProgressRing percentage={percentage} />
-            <View style={styles.imageSeparatorLine} />
-            <View style={styles.imageMetricsArea}>
-              <View style={styles.imageMetricBadgeRow}>
-                <Ionicons
-                  name="location"
-                  size={18}
-                  color="#4ecca3"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={styles.imageStatText}>
-                  {combinedKm} <Text style={styles.imageLabelText}>KM</Text>
-                </Text>
-              </View>
-              <View style={[styles.imageMetricBadgeRow, { marginTop: 6 }]}>
-                <MaterialCommunityIcons
-                  name="fire"
-                  size={18}
-                  color="#ff6b35"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.imageStatText, { color: "#ff6b35" }]}>
-                  {combinedCal} <Text style={styles.imageLabelText}>CAL</Text>
-                </Text>
-              </View>
+
+          {/* Right side: Thin Ring */}
+          <View style={styles.thinRingWrapper}>
+            <Svg
+              width="90"
+              height="90"
+              viewBox="0 0 90 90"
+              style={{ transform: [{ rotate: "-90deg" }] }}
+            >
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#ffffff08"
+                strokeWidth={strokeWidth}
+                fill="none"
+              />
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#4ecca3"
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <View style={styles.ringTextContainer}>
+              <Text style={styles.ringPercentText}>
+                {Math.round(percentage)}%
+              </Text>
             </View>
           </View>
         </View>
@@ -572,6 +560,33 @@ export default function TeamMemberHistory() {
 }
 
 const styles = StyleSheet.create({
+  progressLayoutWrapper: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    width: "100%",
+  },
+  numbersColumn: {
+    flexDirection: "column",
+    justifyContent: "center",
+  },
+  thinRingWrapper: {
+    width: 90,
+    height: 90,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  ringTextContainer: {
+    position: "absolute",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ringPercentText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "600",
+    letterSpacing: 0,
+  },
   container: { flex: 1, paddingTop: 25, backgroundColor: "#0f0f0f" },
   headerTitle: {
     fontSize: 24,

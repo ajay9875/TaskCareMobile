@@ -76,7 +76,8 @@ function MainLayout() {
   const [updating, setUpdating] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false); // ← add this
   const [showBudgetPromo, setShowBudgetPromo] = useState(false);
-
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  
   // Inside MainLayout:
   useEffect(() => {
     const handleDeepLink = ({ url }: { url: string }) => {
@@ -169,96 +170,69 @@ function MainLayout() {
     }, 4000);
   };
 
-  const handleLogout = async () => {
-    Alert.alert(
-      "Sign Out?",
-      "⚠️ Your step tracker stops when you sign out.\n\n" +
-        "If you log out and then close or minimize the app without logging back in, any steps taken during that time will be lost.\n\n" +
-        "While logged out, your steps will never be saved automatically — they only sync to the server when you are logged in.\n\n" +
-        "Before continuing, open the Fitness Tracker screen and make sure all your steps have synced.",
-      [
-        { text: "Cancel", style: "cancel" },
-      {
-        text: "Logout",
-        style: "destructive",
-        onPress: async () => {
-          // ── 1. Show the overlay immediately and remember the start time ──
-          setLoggingOut(true);
-          setHeaderModalVisible(false);
-          const startTime = Date.now();
-
-          try {
-            // ── 2. Stop the native step tracker (best-effort) ──
-            try {
-              await stopStepTracker();
-            } catch (e) {
-              console.log("[logout] stopStepTracker failed (non-fatal):", e);
-            }
-
-            // ── 3. Tell the server to drop the session (with a timeout!) ──
-            //     A slow/hung server must NOT block the local cleanup.
-            try {
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 8000);
-              await fetch(`${API_BASE}/logout`, {
-                method: "POST",
-                credentials: "include",
-                signal: controller.signal,
-              });
-              clearTimeout(timeoutId);
-            } catch (e) {
-              // Even if the network call fails, we still clear locally.
-              console.log("[logout] server logout failed (non-fatal):", e);
-            }
-
-            // ── 4. Wipe every local key the app relies on ──
-            try {
-              const keysToClear = [
-                "@taskcare360_cached_target",
-                "@taskcare360_treadmill_mode",
-                "@taskcare360_battery_prompt_shown",
-                "@taskcare360_just_reloaded",
-              ];
-              await AsyncStorage.multiRemove(keysToClear);
-
-              // If your step tracker uses its own queue key, add it here too:
-              // await AsyncStorage.removeItem("@taskcare360_pending_events");
-              // await AsyncStorage.removeItem("@taskcare360_last_sync");
-            } catch (e) {
-              console.log(
-                "[logout] AsyncStorage cleanup failed (non-fatal):",
-                e,
-              );
-            }
-
-            // ── 5. Clear the in-memory auth state IMMEDIATELY ──
-            //    clearSession() sets user = null synchronously, so the header
-            //    avatar disappears on the very next render — before the
-            //    network round-trip below even starts.
-            clearSession();
-
-            // ── 6. Verify against the server (best-effort) ──
-            //    checkSession() will see 401 → keeps user null.
-            //    If the server is unreachable, the context's own catch
-            //    also keeps user null — no risk of re-hydrating.
-            await checkSession();
-          } finally {
-            // ── 6. Enforce 2-second minimum (same as signup.tsx) ──
-            const elapsedTime = Date.now() - startTime;
-            const minDelay = 2000;
-            const remainingTime = Math.max(0, minDelay - elapsedTime);
-
-            setTimeout(() => {
-              setLoggingOut(false);
-
-              // ── 7. Redirect to /login with a flag the screen can read ──
-              router.replace("/login?loggedOut=true");
-            }, remainingTime);
-          }
-        },
-      },
-    ]);
+  const handleLogout = () => {
+    setHeaderModalVisible(false);
+    setShowLogoutConfirm(true);
   };
+
+  const confirmLogout = async () => {
+  setShowLogoutConfirm(false);
+  setLoggingOut(true);
+
+  const startTime = Date.now();
+
+  try {
+    // 1. Stop the native step tracker
+    try {
+      await stopStepTracker();
+    } catch (e) {
+      console.log("[logout] stopStepTracker failed:", e);
+    }
+
+    // 2. Log out from the server
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      await fetch(`${API_BASE}/logout`, {
+        method: "POST",
+        credentials: "include",
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+    } catch (e) {
+      console.log("[logout] server logout failed:", e);
+    }
+
+    // 3. Clear local storage
+    try {
+      await AsyncStorage.multiRemove([
+        "@taskcare360_cached_target",
+        "@taskcare360_treadmill_mode",
+        "@taskcare360_battery_prompt_shown",
+        "@taskcare360_just_reloaded",
+      ]);
+    } catch (e) {
+      console.log("[logout] AsyncStorage cleanup failed:", e);
+    }
+
+    // 4. Clear authentication
+    clearSession();
+
+    // 5. Verify session
+    await checkSession();
+  } finally {
+    // 6. Maintain minimum loading duration
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = Math.max(0, 2000 - elapsedTime);
+
+    setTimeout(() => {
+      setLoggingOut(false);
+      router.replace("/login?loggedOut=true");
+    }, remainingTime);
+  }
+};
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editEmail.trim()) {
@@ -336,10 +310,10 @@ function MainLayout() {
                     style={{ width: 32, height: 32, borderRadius: 8 }}
                     resizeMode="contain"
                   />
-                    {/* ✅ Crisp, bold, two-tone text */}
-                    <Text style={styles.headerLogo}>
-                      Fit<Text style={{ color: "#4ecca3" }}>Wisely</Text>
-                    </Text>
+                  {/* ✅ Crisp, bold, two-tone text */}
+                  <Text style={styles.headerLogo}>
+                    Fit<Text style={{ color: "#4ecca3" }}>Wisely</Text>
+                  </Text>
                 </TouchableOpacity>
 
                 {/* ✅ Circular profile icon with border and distinct color */}
@@ -484,7 +458,7 @@ function MainLayout() {
                     onPress={() => {
                       setHeaderModalVisible(false);
                       Linking.openURL(
-                        "mailto:info.fitwisely@gmail.com?subject=Support%20Request&body=Hi%20FitWisely%20Team,%0A%0AI%20need%20help%20with..."
+                        "mailto:info.fitwisely@gmail.com?subject=Support%20Request&body=Hi%20FitWisely%20Team,%0A%0AI%20need%20help%20with...",
                       );
                     }}
                   >
@@ -568,6 +542,117 @@ function MainLayout() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* Custom step-by-step sign-out confirmation */}
+<Modal
+  visible={showLogoutConfirm}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowLogoutConfirm(false)}
+>
+  <View style={styles.logoutModalOverlay}>
+    <View style={styles.logoutDialog}>
+      <View style={styles.logoutIconCircle}>
+        <MaterialCommunityIcons
+          name="walk"
+          size={30}
+          color="#D97706"
+        />
+      </View>
+
+      <Text style={styles.logoutTitle}>Before You Sign Out</Text>
+
+      <Text style={styles.logoutSubtitle}>
+        Please review these important steps to protect your fitness progress.
+      </Text>
+
+      {/* Step 1 */}
+      <View style={styles.logoutStepRow}>
+        <View style={styles.logoutStepNumber}>
+          <Text style={styles.logoutStepNumberText}>1</Text>
+        </View>
+
+        <View style={styles.logoutStepContent}>
+          <Text style={styles.logoutStepTitle}>Sync your steps</Text>
+          <Text style={styles.logoutStepDescription}>
+            Open the Fitness Tracker screen and wait at least 10 seconds to allow your latest steps to sync to the cloud before signing out.
+          </Text>
+        </View>
+      </View>
+
+      {/* Step 2 */}
+      <View style={styles.logoutStepRow}>
+        <View style={styles.logoutStepNumber}>
+          <Text style={styles.logoutStepNumberText}>2</Text>
+        </View>
+
+        <View style={styles.logoutStepContent}>
+          <Text style={styles.logoutStepTitle}>Tracking will stop</Text>
+          <Text style={styles.logoutStepDescription}>
+            FitWisely will stop tracking steps when you sign out.
+          </Text>
+        </View>
+      </View>
+
+      {/* Step 3 */}
+      <View style={[styles.logoutStepRow, styles.logoutLastStep]}>
+        <View style={styles.logoutStepNumber}>
+          <Text style={styles.logoutStepNumberText}>3</Text>
+        </View>
+
+        <View style={styles.logoutStepContent}>
+          <Text style={styles.logoutStepTitle}>
+            Steps won't sync while signed out
+          </Text>
+          <Text style={styles.logoutStepDescription}>
+            Steps taken while you are logged out will not be saved to your account automatically.
+          </Text>
+        </View>
+      </View>
+
+      {/* Warning */}
+      <View style={styles.logoutWarning}>
+        <MaterialCommunityIcons
+          name="alert-circle-outline"
+          size={19}
+          color="#B45309"
+        />
+
+        <Text style={styles.logoutWarningText}>
+          Make sure your steps are synced before continuing.
+        </Text>
+      </View>
+
+      {/* Buttons */}
+      <View style={styles.logoutActions}>
+        <TouchableOpacity
+          style={styles.logoutCancelButton}
+          onPress={() => setShowLogoutConfirm(false)}
+        >
+          <Text style={styles.logoutCancelText}>
+            Stay Logged In
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.logoutConfirmButton}
+          onPress={confirmLogout}
+        >
+          <MaterialCommunityIcons
+            name="logout"
+            size={17}
+            color="#FFFFFF"
+            style={{ marginRight: 7 }}
+          />
+
+          <Text style={styles.logoutConfirmText}>
+            Sign Out
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
 
       {/* ✅ EDIT PROFILE MODAL */}
       <Modal visible={isEditModalVisible} animationType="fade" transparent>
@@ -789,6 +874,157 @@ export default function Layout() {
 }
 
 const styles = StyleSheet.create({
+  logoutModalOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(15, 23, 42, 0.68)",
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 20,
+},
+
+logoutDialog: {
+  width: "100%",
+  maxWidth: 430,
+  backgroundColor: "#FFFFFF",
+  borderRadius: 24,
+  padding: 22,
+  elevation: 12,
+  shadowColor: "#000000",
+  shadowOffset: { width: 0, height: 8 },
+  shadowOpacity: 0.18,
+  shadowRadius: 18,
+},
+
+logoutIconCircle: {
+  width: 58,
+  height: 58,
+  borderRadius: 29,
+  backgroundColor: "#FEF3C7",
+  alignItems: "center",
+  justifyContent: "center",
+  alignSelf: "center",
+  marginBottom: 14,
+},
+
+logoutTitle: {
+  fontSize: 21,
+  fontWeight: "800",
+  color: "#0F172A",
+  textAlign: "center",
+  marginBottom: 7,
+},
+
+logoutSubtitle: {
+  fontSize: 13,
+  lineHeight: 19,
+  color: "#64748B",
+  textAlign: "center",
+  marginBottom: 20,
+},
+
+logoutStepRow: {
+  flexDirection: "row",
+  alignItems: "flex-start",
+  paddingVertical: 11,
+  borderBottomWidth: 1,
+  borderBottomColor: "#F1F5F9",
+},
+
+logoutLastStep: {
+  borderBottomWidth: 0,
+  paddingBottom: 8,
+},
+
+logoutStepNumber: {
+  width: 28,
+  height: 28,
+  borderRadius: 14,
+  backgroundColor: "#E0F2FE",
+  alignItems: "center",
+  justifyContent: "center",
+  marginRight: 12,
+},
+
+logoutStepNumberText: {
+  color: "#0369A1",
+  fontSize: 13,
+  fontWeight: "800",
+},
+
+logoutStepContent: {
+  flex: 1,
+  paddingTop: 1,
+},
+
+logoutStepTitle: {
+  color: "#1E293B",
+  fontSize: 14,
+  fontWeight: "700",
+  marginBottom: 3,
+},
+
+logoutStepDescription: {
+  color: "#64748B",
+  fontSize: 12,
+  lineHeight: 18,
+},
+
+logoutWarning: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#FFFBEB",
+  borderColor: "#FDE68A",
+  borderWidth: 1,
+  borderRadius: 12,
+  padding: 11,
+  marginTop: 12,
+  marginBottom: 18,
+},
+
+logoutWarningText: {
+  flex: 1,
+  color: "#92400E",
+  fontSize: 12,
+  fontWeight: "600",
+  lineHeight: 17,
+  marginLeft: 8,
+},
+
+logoutActions: {
+  flexDirection: "row",
+  gap: 10,
+},
+
+logoutCancelButton: {
+  flex: 1,
+  paddingVertical: 13,
+  borderRadius: 12,
+  backgroundColor: "#F1F5F9",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+logoutCancelText: {
+  color: "#334155",
+  fontSize: 13,
+  fontWeight: "700",
+},
+
+logoutConfirmButton: {
+  flex: 1,
+  flexDirection: "row",
+  paddingVertical: 13,
+  borderRadius: 12,
+  backgroundColor: "#DC2626",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+logoutConfirmText: {
+  color: "#FFFFFF",
+  fontSize: 13,
+  fontWeight: "700",
+},
   headerContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -802,9 +1038,9 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center" },
   headerLogo: {
     fontSize: 22,
-    fontWeight: "900",      // 👈 Makes it extra thick and bold
-    color: "#1a1a2e",       // 👈 Dark Navy (matches "Fit" in your logo)
-    letterSpacing: -0.5,    // 👈 Tightens the letters for a modern tech look
+    fontWeight: "900", // 👈 Makes it extra thick and bold
+    color: "#1a1a2e", // 👈 Dark Navy (matches "Fit" in your logo)
+    letterSpacing: -0.5, // 👈 Tightens the letters for a modern tech look
     marginLeft: 8,
   },
   HeaderRight: { padding: 4 },

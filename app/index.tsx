@@ -262,18 +262,17 @@ export default function LandingScreen() {
               Real-time Step Counter – Track your steps dynamically on screen.
             </Text>
           </View>
+          {/* ✅ Replaced Treadmill with Walking Pace */}
           <View style={styles.featureRow}>
-            <MaterialCommunityIcons name="treadmill" size={18} color="#555" />
+            <MaterialCommunityIcons name="speedometer" size={18} color="#555" />
             <Text style={styles.featureText}>
-              Treadmill Calibration – Swap algorithms to match physical
-              machines.
+              Pace & Distance – Automatically calculates your walking speed and distance.
             </Text>
           </View>
           <View style={styles.featureRow}>
             <Ionicons name="sync-circle" size={18} color="#555" />
             <Text style={styles.featureText}>
-              Auto-Sync Metrics – Saves records to the database every 5 steps or
-              5 seconds.
+              Auto-Sync Metrics – Saves records to the database seamlessly in the background.
             </Text>
           </View>
           <View style={styles.featureRow}>
@@ -297,10 +296,9 @@ export default function LandingScreen() {
             </Text>
           </View>
           <View style={styles.stepRow}>
-            <MaterialCommunityIcons name="run-fast" size={20} color="#4ecca3" />
+            <MaterialCommunityIcons name="walk" size={20} color="#4ecca3" />
             <Text style={styles.stepText}>
-              2. Head to the tracking screen and select your mode (Walking or
-              Treadmill).
+              2. Head to the tracking screen to start walking and tracking your steps.
             </Text>
           </View>
           <View style={styles.stepRow}>
@@ -336,7 +334,7 @@ export default function LandingScreen() {
             </Text>
             <Text style={styles.warningText}>
               If you must sign out, first open the Fitness Tracker screen and
-              wait for the sync indicator to show all steps are saved.
+              wait for the 10secs to sync and save your current progress.
             </Text>
           </View>
         </View>
