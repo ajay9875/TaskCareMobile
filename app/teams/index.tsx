@@ -778,9 +778,15 @@ function allTeamsSignedInCount(): number {
                         {item.name} {item.role === "admin" ? "👑" : ""}{" "}
                         {isMe ? "(you)" : ""}
                       </Text>
-                      <Text style={styles.memberStatus}>
-                        {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
-                      </Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 }}>
+                        <Text style={styles.memberStatus}>
+                          {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
+                        </Text>
+                        
+                        <Text style={styles.memberStatus}>
+                          {isOnlineMember(item) ? "🟢 Online" : "⚪ Offline"}
+                        </Text>
+                      </View>
                     </View>
                   </TouchableOpacity>
 
@@ -1209,7 +1215,7 @@ const styles = StyleSheet.create({
   avatarText: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   rowText: { flex: 1, minWidth: 0 },
   memberName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
-  memberStatus: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  memberStatus: { fontSize: 12, color: "#64748B" },
   stepsWrap: {
     alignItems: "flex-end",
     marginRight: 8,
