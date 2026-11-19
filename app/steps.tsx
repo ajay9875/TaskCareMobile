@@ -346,15 +346,27 @@ export default function StepsScreen() {
       setCurrentTime(new Date());
     }, 1000);
 
-    // ✅ SMART POLLING: Fetch every 3 seconds unconditionally
+    // ✅ SMART POLLING: Fetch hardware and server every 2 seconds
     const dataPollTimer = setInterval(async () => {
+      // 1. Read hardware steps directly
+      let hardwareSteps = 0;
+      if (ExpoPedometer && Device.isDevice) {
+        hardwareSteps = await ExpoPedometer.getTodayStepCountAsync().catch(() => 0);
+      }
+
+      // 2. Instantly update UI if hardware has new steps
+      if (hardwareSteps > 0) {
+        setWalkingSteps((prev) => Math.max(prev, hardwareSteps));
+      }
+
+      // 3. Sync with server in the background
       const NetInfo = require("@react-native-community/netinfo").default;
       const netState = await NetInfo.fetch();
 
       if (netState.isConnected && netState.isInternetReachable !== false) {
         fetchCloudMetrics();
       }
-    }, 3000); // 👈 3 seconds
+    }, 2000); // 👈 Poll every 2 seconds
 
     return () => {
       syncListener.remove();
