@@ -49,12 +49,12 @@ const STEP_COUNT_TASK = "taskcare360-step-count-task";
 const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
-const FOREGROUND_POLL_MS = 5000; // Changed from 2000 to 5000 to reduce race conditions
+const FOREGROUND_POLL_MS = 3000;
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
 const RECONCILE_MIN_INTERVAL_MS = 60_000;
-const RECOVERY_LOCK_MS = 10_000; // 10s lock timeout
+const RECOVERY_LOCK_MS = 3000; // 10s lock timeout
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
@@ -144,13 +144,8 @@ export const enqueueSteps = async (
 ) => {
   if (!delta || delta <= 0) return;
 
-  const now = Date.now();
-  if (delta === lastEnqueuedDelta && now - lastEnqueuedTime < 2000) {
-    console.log(`[stepTracker] Blocked duplicate enqueue of ${delta} steps`);
-    return;
-  }
-  lastEnqueuedDelta = delta;
-  lastEnqueuedTime = now;
+  // Removed the 2-second deduplication block entirely.
+  // The baseline update ensures we never send the same step twice.
 
   const queue = await readQueue();
   queue.push({

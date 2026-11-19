@@ -334,9 +334,11 @@ export default function StepsScreen() {
         } else {
           setWalkingSteps((prev) => prev + event.delta);
         }
+        // ✅ ALSO force a fetch to grab the latest hardware/server state
+        fetchCloudMetrics();
       },
     );
-
+    
     Animated.loop(
       Animated.sequence([
         Animated.timing(blinkAnim, {
@@ -372,7 +374,7 @@ export default function StepsScreen() {
           fetchCloudMetrics();
         }
       }
-    }, 5000);
+    }, 3000);
 
     return () => {
       syncListener.remove();
