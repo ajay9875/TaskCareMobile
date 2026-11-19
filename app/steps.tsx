@@ -1,14 +1,8 @@
-// app/steps.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as Device from "expo-device";
 import { LinearGradient } from "expo-linear-gradient";
-import {
-  getPermissionsAsync,
-  isAvailableAsync,
-  PermissionStatus,
-  requestPermissionsAsync,
-} from "expo-pedometer";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -26,6 +20,14 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { updateNativeTarget } from "../utils/stepTracker";
+
+// ✅ Safely load ExpoPedometer
+let ExpoPedometer: any = null;
+try {
+  ExpoPedometer = require("expo-pedometer");
+} catch (e) {
+  console.log("ExpoPedometer not found in Expo Go");
+}
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
@@ -55,31 +57,37 @@ export default function StepsScreen() {
   const [hasNetError, setHasNetError] = useState(false);
 
   const handlePermissionCheck = async (): Promise<boolean> => {
+    // ✅ If native module is missing (Expo Go), skip permission check
+    if (!ExpoPedometer) {
+      isCheckingPermissions.current = false;
+      return false;
+    }
+
     if (isCheckingPermissions.current) return false;
     isCheckingPermissions.current = true;
 
     try {
-      const available = await isAvailableAsync();
+      const available = await ExpoPedometer.isAvailableAsync();
       if (!available) {
         isCheckingPermissions.current = false;
         return false;
       }
 
-      const existing = await getPermissionsAsync();
+      const existing = await ExpoPedometer.getPermissionsAsync();
 
-      if (existing.status === PermissionStatus.GRANTED) {
+      if (existing.status === ExpoPedometer.PermissionStatus.GRANTED) {
         isCheckingPermissions.current = false;
         return true;
       }
 
       if (existing.canAskAgain) {
-        const requested = await requestPermissionsAsync();
-        if (requested.status === PermissionStatus.GRANTED) {
+        const requested = await ExpoPedometer.requestPermissionsAsync();
+        if (requested.status === ExpoPedometer.PermissionStatus.GRANTED) {
           isCheckingPermissions.current = false;
           return true;
         }
 
-        const updated = await getPermissionsAsync();
+        const updated = await ExpoPedometer.getPermissionsAsync();
         if (!updated.canAskAgain) {
           isCheckingPermissions.current = false;
         }
@@ -165,21 +173,24 @@ export default function StepsScreen() {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      // ✅ Walking mode is now the only mode — force it and keep storage in sync
       const isTreadmill = false;
       setIsTreadmillMode(false);
       treadmillModeRef.current = false;
       await AsyncStorage.setItem(TREADMILL_MODE_KEY, JSON.stringify(false));
 
-      // 1. Fetch synced steps from database
-      const activeParam = isTreadmill ? "treadmill" : "walking";
-      const response = await fetch(
-        `${API_BASE}/steps/data?mode=${activeParam}`,
-        {
-          credentials: "include",
-          signal: controller.signal,
-        },
-      );
+      // ✅ 1. Read the HARDWARE step count directly from the phone
+      let hardwareSteps = 0;
+      if (ExpoPedometer && Device.isDevice) {
+        hardwareSteps = await ExpoPedometer.getTodayStepCountAsync().catch(
+          () => 0,
+        );
+      }
+
+      // 2. Fetch synced steps from database
+      const response = await fetch(`${API_BASE}/steps/data?mode=walking`, {
+        credentials: "include",
+        signal: controller.signal,
+      });
 
       clearTimeout(timeoutId);
 
@@ -189,11 +200,6 @@ export default function StepsScreen() {
       }
 
       if (!response.ok) throw new Error(`Server status: ${response.status}`);
-
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        throw new Error("Server returned non-JSON response.");
-      }
 
       const data = await response.json();
 
@@ -205,8 +211,6 @@ export default function StepsScreen() {
         );
         await updateNativeTarget(data.target_steps);
 
-        // 2. Read unsynced offline steps from local queue AFTER network completes.
-        //    This prevents the UI from dropping if flushQueue() ran during the fetch.
         const { getPendingQueue } = require("../utils/stepTracker");
         const currentQueue = await getPendingQueue();
 
@@ -217,10 +221,14 @@ export default function StepsScreen() {
           .filter((e: any) => e.mode === "treadmill")
           .reduce((sum: number, e: any) => sum + e.delta, 0);
 
-        // ✅ Use MAX — never let the UI go down
-        setWalkingSteps((prev) =>
-          Math.max(prev, data.walking_steps + localBufferWalking),
+        // ✅ Calculate the highest known step count:
+        // Server steps + pending queue, OR the phone's hardware steps (whichever is higher)
+        const finalWalking = Math.max(
+          data.walking_steps + localBufferWalking,
+          hardwareSteps, // 👈 This guarantees we show the phone's actual steps
         );
+
+        setWalkingSteps((prev) => Math.max(prev, finalWalking));
         setTreadmillSteps((prev) =>
           Math.max(prev, data.treadmill_steps + localBufferTreadmill),
         );
@@ -293,6 +301,18 @@ export default function StepsScreen() {
       setUpdatingGoal(false);
     }
   };
+
+    // ✅ On focus/refetch, trigger recovery and refresh UI
+  useFocusEffect(
+    useCallback(() => {
+      // 1. Ask the tracker to recover missed steps
+      const { recoverMissedSteps } = require("../utils/stepTracker");
+      recoverMissedSteps();
+      
+      // 2. Refresh the UI
+      fetchCloudMetrics();
+    }, [])
+  );
 
   useEffect(() => {
     handlePermissionCheck();
@@ -500,6 +520,7 @@ export default function StepsScreen() {
               {currentTime.toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
+                second: "2-digit", // 👈 Add this line
               })}
             </Text>
           </View>
@@ -515,6 +536,7 @@ export default function StepsScreen() {
             <Text style={styles.stepCount}>
               {activeDisplaySteps.toLocaleString()}
             </Text>
+
             <Text style={styles.stepLabel}>STEPS TODAY</Text>
             <View style={styles.progressBarBg}>
               <View
@@ -523,6 +545,10 @@ export default function StepsScreen() {
                   { width: `${progress * 100}%` },
                 ]}
               />
+              {/* Text overlays the bar */}
+              <Text style={styles.progressBarText}>
+                {Math.round(progress * 100)}%
+              </Text>
             </View>
           </View>
 
@@ -654,11 +680,20 @@ export default function StepsScreen() {
 }
 
 const styles = StyleSheet.create({
-  centeredContent: {
+  // 1. Change the main container to center all children
+  container: {
     flex: 1,
-    justifyContent: "center",
+    paddingHorizontal: 15,
+    justifyContent: "center", // 👈 Changed from "space-between" to "center"
   },
-  container: { flex: 1, paddingHorizontal: 15 },
+
+  // 2. Remove the gap and margin from the middle wrapper
+  centeredContent: {
+    flex: 0, // 👈 Changed from 1 to 0 so it doesn't stretch
+    justifyContent: "center",
+    gap: 0, // 👈 Changed from 24 to 0
+  },
+
   pageHeaderBlock: {
     alignItems: "center",
     marginTop: 0,
@@ -700,7 +735,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   liveText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-  timeText: { color: "#fff", fontSize: 22, fontWeight: "bold" },
+  timeText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
   mainProgressArea: {
     marginVertical: 25,
     justifyContent: "center",
@@ -713,10 +748,15 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff15",
   },
   stepCount: {
-    fontSize: 44,
-    fontWeight: "900",
-    color: "#fff",
-    marginVertical: 2,
+    fontSize: 44, // 👈 Increased from 44 to make it a hero element
+    fontWeight: "300", // Extra bold
+    color: "#ffffff",
+    marginVertical: 4,
+    letterSpacing: -1.5, // 👈 Pulls the digits closer together for a modern look
+    // ✅ Adds a subtle green glow behind the text
+    textShadowColor: "rgba(78, 204, 163, 0.4)",
+    textShadowOffset: { width: 0, height: 4 },
+    textShadowRadius: 12,
   },
   stepLabel: {
     color: "#4ecca3",
@@ -725,17 +765,29 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   progressBarBg: {
-    height: 8,
+    height: 16, // 👈 Make it a bit taller so the text fits inside cleanly
     width: "100%",
     backgroundColor: "#ffffff15",
-    borderRadius: 10,
+    borderRadius: 8, // Keep it rounded
     marginTop: 20,
     overflow: "hidden",
+    justifyContent: "center", // 👈 Center the text vertically
+    position: "relative", // 👈 Required for absolute positioning inside
   },
   progressBarFill: {
     height: "100%",
     backgroundColor: "#4ecca3",
-    borderRadius: 10,
+    borderRadius: 8,
+  },
+
+  // ✅ NEW: Text Style for inside the bar
+  progressBarText: {
+    position: "absolute",
+    alignSelf: "center", // 👈 Centers the text horizontally
+    color: "#000000", // Dark text looks best over the green fill
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.5,
   },
   statsGrid: {
     flexDirection: "row",

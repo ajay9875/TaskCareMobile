@@ -1,20 +1,8 @@
-// utils/stepTracker.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import * as BackgroundFetch from "expo-background-fetch";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import {
-  PermissionStatus,
-  getPermissionsAsync,
-  getTodayStepCountAsync,
-  isAvailableAsync,
-  isBackgroundAvailableAsync,
-  requestBackgroundPermissionsAsync,
-  requestPermissionsAsync,
-  startStepCountUpdatesAsync,
-  type StepCountTaskData,
-} from "expo-pedometer";
 import * as TaskManager from "expo-task-manager";
 import {
   Alert,
@@ -25,6 +13,25 @@ import {
 } from "react-native";
 
 import StepTracker from "react-native-step-tracker-pro";
+
+// ✅ Safely attempt to load ExpoPedometer. If it's Expo Go, it will be undefined.
+let ExpoPedometer: any = null;
+try {
+  ExpoPedometer = require("expo-pedometer");
+} catch (e) {
+  console.log("[stepTracker] ExpoPedometer native module not found. Step tracking disabled.");
+}
+
+// Destructure safe fallbacks
+const PermissionStatus = ExpoPedometer?.PermissionStatus;
+const getPermissionsAsync = ExpoPedometer?.getPermissionsAsync;
+const getTodayStepCountAsync = ExpoPedometer?.getTodayStepCountAsync;
+const isAvailableAsync = ExpoPedometer?.isAvailableAsync;
+const isBackgroundAvailableAsync = ExpoPedometer?.isBackgroundAvailableAsync;
+const requestBackgroundPermissionsAsync = ExpoPedometer?.requestBackgroundPermissionsAsync;
+const requestPermissionsAsync = ExpoPedometer?.requestPermissionsAsync;
+const startStepCountUpdatesAsync = ExpoPedometer?.startStepCountUpdatesAsync;
+type StepCountTaskData = any;
 
 // ─── Constants ───────────────────────────────────────────────
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -290,6 +297,9 @@ const readPedometerDelta = async (): Promise<{
   delta: number;
   current: number;
 } | null> => {
+  // ✅ ADD THIS LINE
+  if (!isAvailableAsync || !getTodayStepCountAsync) return null; 
+  
   try {
     const available = await isAvailableAsync();
     if (!available) return null;
@@ -331,7 +341,11 @@ const readPedometerDelta = async (): Promise<{
 
 // ─── Reconcile (ONLY pulls server if it's AHEAD of pedometer) ──
 const reconcileBaselineFromServer = async (): Promise<void> => {
+  // ✅ ADD THIS LINE
+  if (!getTodayStepCountAsync) return;
   const now = Date.now();
+  if (!getTodayStepCountAsync) return; // 👈 ADD THIS
+
   if (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS) {
     return;
   }
@@ -369,10 +383,9 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
 
 // ─── Recover missed steps (THE KEY FUNCTION) ────────────────
 export const recoverMissedSteps = async () => {
-  if (isRecovering) return; // Fast guard for same-context calls
+  if (isRecovering) return;
   isRecovering = true;
 
-  // Slow guard for cross-context calls (Headless JS, Background Task)
   const hasLock = await acquireRecoveryLock();
   if (!hasLock) {
     isRecovering = false;
@@ -380,32 +393,37 @@ export const recoverMissedSteps = async () => {
   }
 
   try {
-    // Step 1: Check if the server is AHEAD of the pedometer (native sync ran)
-    await reconcileBaselineFromServer();
+    // ✅ ADD THIS LINE
+    if (!getTodayStepCountAsync) return; 
+    
+    // 1. Get the true raw step count from the phone's hardware
+    const todaySteps = await getTodayStepCountAsync().catch(() => 0);
+    if (!todaySteps || todaySteps <= 0) return;
 
-    // Step 2: Read pedometer delta from the (possibly updated) baseline
-    const result = await readPedometerDelta();
-    if (!result || result.delta <= 0) return;
+    // 2. Read the local baseline
+    const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
+    const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
 
-    // Step 3: Enqueue the delta
-    const mode = await readActiveMode();
-    await enqueueSteps(result.delta, mode);
+    // 3. If the phone's pedometer is ahead of our baseline, we MUST capture those steps
+    if (todaySteps > lastSynced) {
+      const delta = todaySteps - lastSynced;
+      
+      // Update baseline immediately so we don't double count
+      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
 
-    // Step 4: Update notification title
-    try {
-      await StepTracker.updateConfig({
-        notificationTitle: "👑 Hit: {steps} of {goal} steps!",
-      });
-    } catch (e) {}
+      const mode = await readActiveMode();
+      await enqueueSteps(delta, mode);
 
-    // Step 5: Emit event so steps.tsx updates the UI INSTANTLY
-    DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
-      delta: result.delta,
-      mode,
-    });
+      // Emit event so the UI instantly jumps up
+      DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", { delta, mode });
 
-    // Step 6: Flush queue (JS-side sync)
-    await flushQueue();
+      // Flush to server
+      await flushQueue();
+    } else {
+      // 4. If the server is ahead (e.g. native plugin synced in background),
+      // we reconcile the baseline upwards so we don't double count.
+      await reconcileBaselineFromServer();
+    }
   } finally {
     isRecovering = false;
     await releaseRecoveryLock();
@@ -676,6 +694,9 @@ const initLiveNotificationTracker = async () => {
 
 // ─── Public helpers ─────────────────────────────────────────
 export const updateNativeTarget = async (newTarget: number) => {
+  // ✅ Do not attempt to update native notification if module is missing
+  if (!ExpoPedometer) return;
+
   try {
     await StepTracker.updateConfig({
       dailyGoal: newTarget,
@@ -696,7 +717,9 @@ export const initStepTracker = async () => {
   if (initialized) return;
   initialized = true;
 
-  if (!Device.isDevice) {
+    // ✅ If ExpoPedometer is not available (Expo Go / Emulator), skip native setup
+  if (!ExpoPedometer || !Device.isDevice) {
+    console.log("[stepTracker] Native module missing or not a real device. Skipping native init.");
     return;
   }
 
