@@ -19,7 +19,9 @@ let ExpoPedometer: any = null;
 try {
   ExpoPedometer = require("expo-pedometer");
 } catch (e) {
-  console.log("[stepTracker] ExpoPedometer native module not found. Step tracking disabled.");
+  console.log(
+    "[stepTracker] ExpoPedometer native module not found. Step tracking disabled.",
+  );
 }
 
 // Destructure safe fallbacks
@@ -28,7 +30,8 @@ const getPermissionsAsync = ExpoPedometer?.getPermissionsAsync;
 const getTodayStepCountAsync = ExpoPedometer?.getTodayStepCountAsync;
 const isAvailableAsync = ExpoPedometer?.isAvailableAsync;
 const isBackgroundAvailableAsync = ExpoPedometer?.isBackgroundAvailableAsync;
-const requestBackgroundPermissionsAsync = ExpoPedometer?.requestBackgroundPermissionsAsync;
+const requestBackgroundPermissionsAsync =
+  ExpoPedometer?.requestBackgroundPermissionsAsync;
 const requestPermissionsAsync = ExpoPedometer?.requestPermissionsAsync;
 const startStepCountUpdatesAsync = ExpoPedometer?.startStepCountUpdatesAsync;
 type StepCountTaskData = any;
@@ -43,22 +46,19 @@ const LAST_SYNCED_COUNT_KEY = "@taskcare360_last_synced_count";
 const LAST_SYNCED_DATE_KEY = "@taskcare360_last_synced_date";
 const LAST_TIMESTAMP_KEY = "@taskcare360_last_sync_time";
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
-const RECOVERY_LOCK_KEY = "@taskcare360_recovery_lock";
 
 const STEP_COUNT_TASK = "taskcare360-step-count-task";
 const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
-const FOREGROUND_POLL_MS = 2000;
+const FOREGROUND_POLL_MS = 5000;
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
-const RECONCILE_MIN_INTERVAL_MS = 60_000;
-const RECOVERY_LOCK_MS = 1500; // 10s lock timeout
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
-let isRecovering = false;
+let recoveryPromise: Promise<void> | null = null;
 let debounceTimer: any = null;
 let retryTimer: any = null;
 let netListenerAttached = false;
@@ -68,7 +68,6 @@ let foregroundPollTimer: any = null;
 let isCheckingNotificationPermission = false;
 let backgroundTaskRegistered = false;
 let backgroundFetchRegistered = false;
-let lastReconcileTime = 0;
 
 // ─── Types ───────────────────────────────────────────────────
 export type StepEvent = {
@@ -135,9 +134,6 @@ export const readActiveMode = async (): Promise<"walking" | "treadmill"> => {
 };
 
 // ─── Enqueue steps ───────────────────────────────────────────
-let lastEnqueuedDelta = 0;
-let lastEnqueuedTime = 0;
-
 export const enqueueSteps = async (
   delta: number,
   mode: "walking" | "treadmill",
@@ -155,7 +151,7 @@ export const enqueueSteps = async (
     created_at: Date.now(),
   });
   await writeQueue(queue);
-  flushQueue();
+  await flushQueue();
 };
 
 // ─── Flush queue (JS foreground → /api/steps/sync) ─────────
@@ -265,164 +261,97 @@ export const scheduleFlush = () => {
   }, SYNC_DEBOUNCE_MS);
 };
 
-// ─── Recovery Lock (prevents cross-context race conditions) ───
-const acquireRecoveryLock = async (): Promise<boolean> => {
-  try {
-    const raw = await AsyncStorage.getItem(RECOVERY_LOCK_KEY);
-    const lockedUntil = raw ? parseInt(raw, 10) : 0;
-    if (Date.now() < lockedUntil) return false;
-    await AsyncStorage.setItem(
-      RECOVERY_LOCK_KEY,
-      String(Date.now() + RECOVERY_LOCK_MS),
-    );
-    return true;
-  } catch {
-    return true; // fail-safe: allow recovery if storage fails
-  }
-};
-
-const releaseRecoveryLock = async () => {
-  try {
-    await AsyncStorage.removeItem(RECOVERY_LOCK_KEY);
-  } catch {}
-};
-
 // ─── Read pedometer delta (THE SOURCE OF TRUTH) ────────────
+
 const readPedometerDelta = async (): Promise<{
   delta: number;
   current: number;
 } | null> => {
-  // ✅ ADD THIS LINE
-  if (!isAvailableAsync || !getTodayStepCountAsync) return null; 
-  
+  if (!isAvailableAsync || !getTodayStepCountAsync) return null;
+
   try {
     const available = await isAvailableAsync();
     if (!available) return null;
 
     const todayKey = getTodayKey();
+
     const storedBaselineDate = await AsyncStorage.getItem(BASELINE_DATE_KEY);
     const isNewDay = storedBaselineDate !== todayKey;
 
     const todaySteps = await getTodayStepCountAsync();
 
     if (isNewDay) {
-      await AsyncStorage.setItem(BASELINE_DATE_KEY, todayKey);
-      await AsyncStorage.setItem(BASELINE_COUNT_KEY, todaySteps.toString());
-      await AsyncStorage.setItem(LAST_SYNCED_DATE_KEY, todayKey);
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
+      await AsyncStorage.multiSet([
+        [BASELINE_DATE_KEY, todayKey],
+        [BASELINE_COUNT_KEY, todaySteps.toString()],
+        [LAST_SYNCED_DATE_KEY, todayKey],
+        [LAST_SYNCED_COUNT_KEY, todaySteps.toString()],
+      ]);
+
       return { delta: 0, current: todaySteps };
     }
 
     const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
     const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
+
     const delta = todaySteps - lastSynced;
 
     if (delta < 0) {
-      // 🛑 IMPORTANT: DO NOT write the baseline here!
-      // The reconcile function is responsible for pushing the baseline up.
-      // If we reset it down here, we create an infinite loop that drops steps.
       return { delta: 0, current: todaySteps };
     }
 
-    if (delta > 0) {
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
-    }
+    // Do not update LAST_SYNCED_COUNT_KEY here.
+    // It will be updated only after the event is safely queued.
 
     return { delta, current: todaySteps };
   } catch (e) {
+    console.log("[stepTracker] readPedometerDelta failed:", e);
     return null;
   }
 };
 
-// ─── Reconcile (ONLY pulls server if it's AHEAD of pedometer) ──
-const reconcileBaselineFromServer = async (): Promise<void> => {
-  // ✅ ADD THIS LINE
-  if (!getTodayStepCountAsync) return;
-  const now = Date.now();
-  if (!getTodayStepCountAsync) return; // 👈 ADD THIS
-
-  if (now - lastReconcileTime < RECONCILE_MIN_INTERVAL_MS) {
-    return;
-  }
-  lastReconcileTime = now;
-
-  try {
-    const res = await fetch(`${API_BASE}/steps/data?mode=walking`, {
-      method: "GET",
-      credentials: "include",
-    });
-    if (!res.ok) return;
-
-    const data = await res.json();
-    const serverTotal = (data.walking_steps || 0) + (data.treadmill_steps || 0);
-
-    const todaySteps = await getTodayStepCountAsync();
-    const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
-    const lastSyncedLocal = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
-
-    // ✅ Reconcile when the server has already recorded these steps.
-    const targetBaseline = Math.max(serverTotal, todaySteps);
-    if (targetBaseline > lastSyncedLocal) {
-      await AsyncStorage.setItem(
-        LAST_SYNCED_COUNT_KEY,
-        targetBaseline.toString(),
-      );
-      console.log(
-        `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${targetBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
-      );
-    }
-  } catch (e) {
-    console.log("[stepTracker] reconcileBaselineFromServer failed:", e);
-  }
-};
-
-// ─── Recover missed steps (THE KEY FUNCTION) ────────────────
-export const recoverMissedSteps = async () => {
-  if (isRecovering) return;
-  isRecovering = true;
-
-  const hasLock = await acquireRecoveryLock();
-  if (!hasLock) {
-    isRecovering = false;
-    return;
+// ─── Recover missed steps ────────────────────────────────────
+// Only advance the hardware baseline after the step event has been
+// safely written to the local queue.
+export const recoverMissedSteps = (): Promise<void> => {
+  if (recoveryPromise) {
+    return recoveryPromise;
   }
 
-  try {
-    // ✅ ADD THIS LINE
-    if (!getTodayStepCountAsync) return; 
-    
-    // 1. Get the true raw step count from the phone's hardware
-    const todaySteps = await getTodayStepCountAsync().catch(() => 0);
-    if (!todaySteps || todaySteps <= 0) return;
+  recoveryPromise = (async () => {
+    try {
+      const result = await readPedometerDelta();
+      if (!result) return;
 
-    // 2. Read the local baseline
-    const lastSyncedRaw = await AsyncStorage.getItem(LAST_SYNCED_COUNT_KEY);
-    const lastSynced = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
-
-    // 3. If the phone's pedometer is ahead of our baseline, we MUST capture those steps
-    if (todaySteps > lastSynced) {
-      const delta = todaySteps - lastSynced;
-      
-      // Update baseline immediately so we don't double count
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
+      const { delta, current } = result;
+      if (delta <= 0) return;
 
       const mode = await readActiveMode();
+
+      // enqueueSteps persists the event locally before attempting the API call.
       await enqueueSteps(delta, mode);
 
-      // Emit event so the UI instantly jumps up
-      DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", { delta, mode });
+      await AsyncStorage.multiSet([
+        [LAST_SYNCED_COUNT_KEY, current.toString()],
+        [LAST_SYNCED_DATE_KEY, getTodayKey()],
+      ]);
 
-      // Flush to server
-      await flushQueue();
-    } else {
-      // 4. If the server is ahead (e.g. native plugin synced in background),
-      // we reconcile the baseline upwards so we don't double count.
-      await reconcileBaselineFromServer();
+      DeviceEventEmitter.emit("REALTIME_STEP_TAKEN", {
+        delta: Math.floor(delta),
+        mode,
+      });
+
+      console.log(
+        `[stepTracker] Captured ${delta} new steps. Hardware total: ${current}`,
+      );
+    } catch (error) {
+      console.log("[stepTracker] recoverMissedSteps failed:", error);
     }
-  } finally {
-    isRecovering = false;
-    await releaseRecoveryLock();
-  }
+  })().finally(() => {
+    recoveryPromise = null;
+  });
+
+  return recoveryPromise;
 };
 
 // ─── Notification permission ─────────────────────────────────
@@ -585,8 +514,6 @@ const attachAppStateListener = () => {
 
   AppState.addEventListener("change", async (next) => {
     if (next === "active") {
-      // Reset throttle so a fresh reconcile runs on every resume
-      lastReconcileTime = 0;
       await recoverMissedSteps();
       await flushQueue();
       startForegroundPoll();
@@ -712,9 +639,11 @@ export const initStepTracker = async () => {
   if (initialized) return;
   initialized = true;
 
-    // ✅ If ExpoPedometer is not available (Expo Go / Emulator), skip native setup
+  // ✅ If ExpoPedometer is not available (Expo Go / Emulator), skip native setup
   if (!ExpoPedometer || !Device.isDevice) {
-    console.log("[stepTracker] Native module missing or not a real device. Skipping native init.");
+    console.log(
+      "[stepTracker] Native module missing or not a real device. Skipping native init.",
+    );
     return;
   }
 

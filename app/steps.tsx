@@ -1,8 +1,7 @@
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Device from "expo-device";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter, useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,9 +18,8 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { updateNativeTarget } from "../utils/stepTracker";
+import { recoverMissedSteps, updateNativeTarget } from "../utils/stepTracker";
 
-// ✅ Safely load ExpoPedometer
 let ExpoPedometer: any = null;
 try {
   ExpoPedometer = require("expo-pedometer");
@@ -53,12 +51,10 @@ export default function StepsScreen() {
   const [hasNetError, setHasNetError] = useState(false);
 
   const handlePermissionCheck = async (): Promise<boolean> => {
-    // ✅ If native module is missing (Expo Go), skip permission check
     if (!ExpoPedometer) {
       isCheckingPermissions.current = false;
       return false;
     }
-
     if (isCheckingPermissions.current) return false;
     isCheckingPermissions.current = true;
 
@@ -68,35 +64,25 @@ export default function StepsScreen() {
         isCheckingPermissions.current = false;
         return false;
       }
-
       const existing = await ExpoPedometer.getPermissionsAsync();
-
       if (existing.status === ExpoPedometer.PermissionStatus.GRANTED) {
         isCheckingPermissions.current = false;
         return true;
       }
-
       if (existing.canAskAgain) {
         const requested = await ExpoPedometer.requestPermissionsAsync();
         if (requested.status === ExpoPedometer.PermissionStatus.GRANTED) {
           isCheckingPermissions.current = false;
           return true;
         }
-
         const updated = await ExpoPedometer.getPermissionsAsync();
         if (!updated.canAskAgain) {
           isCheckingPermissions.current = false;
         }
       }
-
       Alert.alert(
         "Physical Activity Permission Required",
-        "Required to track your steps.\n\n" +
-          "How to enable:\n" +
-          "1. Tap 'Open Settings' below.\n" +
-          "2. Select 'Permissions'.\n" +
-          "3. Tap 'Physical activity' (or 'Motion').\n" +
-          "4. Choose 'Allow'.",
+        "Required to track your steps.",
         [
           {
             text: "Open Settings",
@@ -120,7 +106,6 @@ export default function StepsScreen() {
           },
         },
       );
-
       return false;
     } catch (e) {
       console.log("Permission check error:", e);
@@ -131,18 +116,13 @@ export default function StepsScreen() {
 
   const maybeShowBatteryPrompt = async () => {
     if (Platform.OS !== "android") return;
-
     const alreadyShown = await AsyncStorage.getItem(BATTERY_PROMPT_KEY);
     if (alreadyShown === "true") return;
 
     setTimeout(() => {
       Alert.alert(
         "Enable Background Tracking",
-        "For the most accurate step tracking, please allow FitWisely to run in the background:\n\n" +
-          "1. Tap 'Open Settings' below\n" +
-          "2. Find FitWisely 360\n" +
-          "3. Set Battery to 'Unrestricted'\n" +
-          "4. Enable 'Autostart' (if available)",
+        "For the most accurate step tracking, please allow FitWisely to run in the background.",
         [
           {
             text: "Open Settings",
@@ -163,76 +143,57 @@ export default function StepsScreen() {
     }, 800);
   };
 
-  // ✅ SMART SYNC LOGIC: Combines Backend + Offline Queue
-  const fetchCloudMetrics = async () => {
+  const fetchCloudMetrics = useCallback(async () => {
+    if (!API_BASE) {
+      setHasNetError(true);
+      return;
+    }
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-
-      // ✅ 1. Read the HARDWARE step count directly from the phone
-      let hardwareSteps = 0;
-      if (ExpoPedometer && Device.isDevice) {
-        hardwareSteps = await ExpoPedometer.getTodayStepCountAsync().catch(
-          () => 0,
-        );
-      }
-
-      // 2. Fetch synced steps from database
       const response = await fetch(`${API_BASE}/steps/data?mode=walking`, {
         credentials: "include",
         signal: controller.signal,
       });
-
-      clearTimeout(timeoutId);
 
       if (response.status === 401) {
         handleSessionExpired();
         return;
       }
 
-      if (!response.ok) throw new Error(`Server status: ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Server status: ${response.status}`);
+      }
 
       const data = await response.json();
 
       if (data.status === "success") {
-        setTargetSteps(data.target_steps);
+        const dbWalking = Math.max(0, Number(data.walking_steps) || 0);
+        const dbTarget = Math.max(1, Number(data.target_steps) || 5000);
+
+        setTargetSteps(dbTarget);
+
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
-          String(data.target_steps),
+          String(dbTarget),
         );
-        await updateNativeTarget(data.target_steps);
+        await updateNativeTarget(dbTarget);
 
-        const { getPendingQueue } = require("../utils/stepTracker");
-        const currentQueue = await getPendingQueue();
-
-        const localBufferWalking = currentQueue
-          .filter((e: any) => e.mode === "walking")
-          .reduce((sum: number, e: any) => sum + e.delta, 0);
-        const localBufferTreadmill = currentQueue
-          .filter((e: any) => e.mode === "treadmill")
-          .reduce((sum: number, e: any) => sum + e.delta, 0);
-
-        // ✅ Calculate the highest known step count:
-        // Server steps + pending queue, OR the phone's hardware steps (whichever is higher)
-        const finalWalking = Math.max(
-          data.walking_steps + localBufferWalking,
-          hardwareSteps, // 👈 This guarantees we show the phone's actual steps
-        );
-
-        setWalkingSteps((prev) => Math.max(prev, finalWalking));
-        // ✅ Treadmill step state updates removed
-
+        // Keep optimistic hardware updates if an older response arrives late.
+        setWalkingSteps((previous) => Math.max(previous, dbWalking));
         setHasNetError(false);
       }
-    } catch (e) {
-      clearTimeout(timeoutId);
-      console.log("Cloud pull failure handled safely:", e);
-      setHasNetError(true);
+    } catch (error) {
+      if ((error as Error)?.name !== "AbortError") {
+        console.log("[Steps] Cloud metrics fetch failed:", error);
+        setHasNetError(true);
+      }
     } finally {
-      setLoading(false);
+      clearTimeout(timeoutId);
     }
-  };
+  }, [handleSessionExpired]);
 
   const handleUpdateGoal = async () => {
     const parsedGoal = parseInt(goalInput, 10);
@@ -267,16 +228,11 @@ export default function StepsScreen() {
 
       if (data.status === "success") {
         setTargetSteps(parsedGoal);
-
-        // ✅ 1. Save to AsyncStorage for the next boot
         await AsyncStorage.setItem(
           "@taskcare360_cached_target",
           String(parsedGoal),
         );
-
-        // ✅ 2. Hot-swap the native notification string immediately!
         await updateNativeTarget(parsedGoal);
-
         setModalVisible(false);
       } else {
         Alert.alert("Error", data.error || "Failed to update target goal.");
@@ -292,42 +248,77 @@ export default function StepsScreen() {
     }
   };
 
-  // ✅ On focus/refetch, trigger recovery and refresh UI
   useFocusEffect(
     useCallback(() => {
-      // 1. Ask the tracker to recover missed steps
-      const { recoverMissedSteps } = require("../utils/stepTracker");
-      recoverMissedSteps();
-      
-      // 2. Refresh the UI
-      fetchCloudMetrics();
-    }, [])
+      let isActive = true;
+
+      const syncSteps = async () => {
+        await recoverMissedSteps();
+        if (isActive) {
+          await fetchCloudMetrics();
+        }
+      };
+
+      syncSteps();
+
+      return () => {
+        isActive = false;
+      };
+    }, [fetchCloudMetrics]),
   );
 
   useEffect(() => {
-    handlePermissionCheck();
-    fetchCloudMetrics();
-    maybeShowBatteryPrompt();
+    let isMounted = true;
+    let pollRunning = false;
+    let syncRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Listen for background syncs finishing
+    void handlePermissionCheck();
+    void maybeShowBatteryPrompt();
+
+    const initializeSteps = async () => {
+      try {
+        await recoverMissedSteps();
+        if (isMounted) {
+          await fetchCloudMetrics();
+        }
+      } catch (error) {
+        console.log("[Steps] Initial synchronization failed:", error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void initializeSteps();
+
     const syncListener = DeviceEventEmitter.addListener(
       "SYNC_COMPLETED",
-      fetchCloudMetrics,
-    );
-
-    // Listen for real-time steps when app is open
-    const stepTakeListener = DeviceEventEmitter.addListener(
-      "REALTIME_STEP_TAKEN",
-      (event) => {
-        // ✅ Walking mode only
-        setWalkingSteps((prev) => prev + event.delta);
-        
-        // ✅ Force the UI to grab the latest hardware count instantly
-        fetchCloudMetrics(); 
+      () => {
+        // Let REALTIME_STEP_TAKEN update the optimistic count first. This
+        // avoids a fast DB refresh followed by the same event being added again.
+        if (syncRefreshTimer) {
+          clearTimeout(syncRefreshTimer);
+        }
+        syncRefreshTimer = setTimeout(() => {
+          if (isMounted) {
+            void fetchCloudMetrics();
+          }
+        }, 250);
       },
     );
 
-    Animated.loop(
+    const stepTakeListener = DeviceEventEmitter.addListener(
+      "REALTIME_STEP_TAKEN",
+      (event: { delta?: number }) => {
+        const delta = Number(event?.delta) || 0;
+        if (isMounted && delta > 0) {
+          setWalkingSteps((previous) => previous + Math.floor(delta));
+        }
+      },
+    );
+
+    const pulseAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(blinkAnim, {
           toValue: 0.2,
@@ -340,41 +331,50 @@ export default function StepsScreen() {
           useNativeDriver: true,
         }),
       ]),
-    ).start();
+    );
+    pulseAnimation.start();
 
     const clockTimer = setInterval(() => {
-      setCurrentTime(new Date());
+      if (isMounted) {
+        setCurrentTime(new Date());
+      }
     }, 1000);
 
-    // ✅ SMART POLLING: Fetch hardware and server every 2 seconds
+    // Read hardware and refresh cloud data at the configured 5-second cadence.
     const dataPollTimer = setInterval(async () => {
-      // 1. Read hardware steps directly
-      let hardwareSteps = 0;
-      if (ExpoPedometer && Device.isDevice) {
-        hardwareSteps = await ExpoPedometer.getTodayStepCountAsync().catch(() => 0);
-      }
+      if (pollRunning || !isMounted) return;
 
-      // 2. Instantly update UI if hardware has new steps
-      if (hardwareSteps > 0) {
-        setWalkingSteps((prev) => Math.max(prev, hardwareSteps));
-      }
+      pollRunning = true;
+      try {
+        const NetInfo = require("@react-native-community/netinfo").default;
+        const netState = await NetInfo.fetch();
 
-      // 3. Sync with server in the background
-      const NetInfo = require("@react-native-community/netinfo").default;
-      const netState = await NetInfo.fetch();
-
-      if (netState.isConnected && netState.isInternetReachable !== false) {
-        fetchCloudMetrics();
+        if (netState.isConnected && netState.isInternetReachable !== false) {
+          await recoverMissedSteps();
+          if (isMounted) {
+            await fetchCloudMetrics();
+          }
+        }
+      } catch (error) {
+        console.log("[Steps] Periodic synchronization failed:", error);
+      } finally {
+        pollRunning = false;
       }
-    }, 2000); // 👈 Poll every 2 seconds
+    }, 5000);
 
     return () => {
+      isMounted = false;
       syncListener.remove();
       stepTakeListener.remove();
       clearInterval(clockTimer);
       clearInterval(dataPollTimer);
+      if (syncRefreshTimer) {
+        clearTimeout(syncRefreshTimer);
+        syncRefreshTimer = null;
+      }
+      pulseAnimation.stop();
     };
-  }, []);
+  }, [blinkAnim, fetchCloudMetrics]);
 
   if (loading)
     return (
@@ -428,9 +428,7 @@ export default function StepsScreen() {
               marginBottom: 30,
             }}
           >
-            Could not load the data. The server may be busy, offline, or taking
-            too long to respond. Please check your internet connection or
-            restart the app.
+            Could not load the data.
           </Text>
           <TouchableOpacity
             style={{
@@ -469,7 +467,6 @@ export default function StepsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
       <LinearGradient colors={["#000000", "#111111"]} style={styles.container}>
-        {/* ✅ PROFESSIONAL HEADER */}
         <View style={styles.pageHeaderBlock}>
           <Text style={styles.pageHeaderTitle}>Fitness Tracker</Text>
           <Text style={styles.pageHeaderSubtitle}>
@@ -486,10 +483,7 @@ export default function StepsScreen() {
               onPress={() => {
                 Alert.alert(
                   "Background Settings",
-                  "For accurate step tracking:\n\n" +
-                    "1. Open Settings\n" +
-                    "2. Find FitWisely 360\n" +
-                    "3. Set Battery to 'Unrestricted'",
+                  "For accurate step tracking:\n\n1. Open Settings\n2. Find FitWisely 360\n3. Set Battery to 'Unrestricted'",
                   [
                     {
                       text: "Open Settings",
@@ -510,7 +504,7 @@ export default function StepsScreen() {
               {currentTime.toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
-                second: "2-digit", // 👈 Add this line
+                second: "2-digit",
               })}
             </Text>
           </View>
@@ -518,15 +512,10 @@ export default function StepsScreen() {
 
         <View style={styles.centeredContent}>
           <View style={styles.mainProgressArea}>
-            <MaterialCommunityIcons
-              name="walk"
-              size={60}
-              color="#4ecca3"
-            />
+            <MaterialCommunityIcons name="walk" size={60} color="#4ecca3" />
             <Text style={styles.stepCount}>
               {activeDisplaySteps.toLocaleString()}
             </Text>
-
             <Text style={styles.stepLabel}>STEPS TODAY</Text>
             <View style={styles.progressBarBg}>
               <View
@@ -535,7 +524,6 @@ export default function StepsScreen() {
                   { width: `${progress * 100}%` },
                 ]}
               />
-              {/* Text overlays the bar */}
               <Text style={styles.progressBarText}>
                 {Math.round(progress * 100)}%
               </Text>
@@ -670,25 +658,9 @@ export default function StepsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // 1. Change the main container to center all children
-  container: {
-    flex: 1,
-    paddingHorizontal: 15,
-    justifyContent: "center", // 👈 Changed from "space-between" to "center"
-  },
-
-  // 2. Remove the gap and margin from the middle wrapper
-  centeredContent: {
-    flex: 0, // 👈 Changed from 1 to 0 so it doesn't stretch
-    justifyContent: "center",
-    gap: 0, // 👈 Changed from 24 to 0
-  },
-
-  pageHeaderBlock: {
-    alignItems: "center",
-    marginTop: 0,
-    marginBottom: 10,
-  },
+  container: { flex: 1, paddingHorizontal: 15, justifyContent: "center" },
+  centeredContent: { flex: 0, justifyContent: "center", gap: 0 },
+  pageHeaderBlock: { alignItems: "center", marginTop: 0, marginBottom: 10 },
   pageHeaderTitle: {
     fontSize: 24,
     fontWeight: "800",
@@ -738,12 +710,11 @@ const styles = StyleSheet.create({
     borderColor: "#ffffff15",
   },
   stepCount: {
-    fontSize: 44, // 👈 Increased from 44 to make it a hero element
-    fontWeight: "300", // Extra bold
+    fontSize: 44,
+    fontWeight: "300",
     color: "#ffffff",
     marginVertical: 4,
-    letterSpacing: -1.5, // 👈 Pulls the digits closer together for a modern look
-    // ✅ Adds a subtle green glow behind the text
+    letterSpacing: -1.5,
     textShadowColor: "rgba(78, 204, 163, 0.4)",
     textShadowOffset: { width: 0, height: 4 },
     textShadowRadius: 12,
@@ -755,26 +726,24 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
   },
   progressBarBg: {
-    height: 16, // 👈 Make it a bit taller so the text fits inside cleanly
+    height: 16,
     width: "100%",
     backgroundColor: "#ffffff15",
-    borderRadius: 8, // Keep it rounded
+    borderRadius: 8,
     marginTop: 20,
     overflow: "hidden",
-    justifyContent: "center", // 👈 Center the text vertically
-    position: "relative", // 👈 Required for absolute positioning inside
+    justifyContent: "center",
+    position: "relative",
   },
   progressBarFill: {
     height: "100%",
     backgroundColor: "#4ecca3",
     borderRadius: 8,
   },
-
-  // ✅ NEW: Text Style for inside the bar
   progressBarText: {
     position: "absolute",
-    alignSelf: "center", // 👈 Centers the text horizontally
-    color: "#000000", // Dark text looks best over the green fill
+    alignSelf: "center",
+    color: "#000000",
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.5,
