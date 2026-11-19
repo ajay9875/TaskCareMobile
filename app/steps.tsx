@@ -165,23 +165,13 @@ export default function StepsScreen() {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const savedMode = await AsyncStorage.getItem(TREADMILL_MODE_KEY);
-      const isTreadmill = savedMode !== null ? JSON.parse(savedMode) : false;
-      setIsTreadmillMode(isTreadmill);
-      treadmillModeRef.current = isTreadmill;
+      // ✅ Walking mode is now the only mode — force it and keep storage in sync
+      const isTreadmill = false;
+      setIsTreadmillMode(false);
+      treadmillModeRef.current = false;
+      await AsyncStorage.setItem(TREADMILL_MODE_KEY, JSON.stringify(false));
 
-      // 1. Read unsynced offline steps from local queue
-      const { getPendingQueue } = require("../utils/stepTracker");
-      const pendingEvents = await getPendingQueue();
-
-      const localBufferWalking = pendingEvents
-        .filter((e: any) => e.mode === "walking")
-        .reduce((sum: number, e: any) => sum + e.delta, 0);
-      const localBufferTreadmill = pendingEvents
-        .filter((e: any) => e.mode === "treadmill")
-        .reduce((sum: number, e: any) => sum + e.delta, 0);
-
-      // 2. Fetch synced steps from database
+      // 1. Fetch synced steps from database
       const activeParam = isTreadmill ? "treadmill" : "walking";
       const response = await fetch(
         `${API_BASE}/steps/data?mode=${activeParam}`,
@@ -207,8 +197,6 @@ export default function StepsScreen() {
 
       const data = await response.json();
 
-      // Inside app/steps.tsx -> fetchCloudMetrics
-
       if (data.status === "success") {
         setTargetSteps(data.target_steps);
         await AsyncStorage.setItem(
@@ -217,6 +205,8 @@ export default function StepsScreen() {
         );
         await updateNativeTarget(data.target_steps);
 
+        // 2. Read unsynced offline steps from local queue AFTER network completes.
+        //    This prevents the UI from dropping if flushQueue() ran during the fetch.
         const { getPendingQueue } = require("../utils/stepTracker");
         const currentQueue = await getPendingQueue();
 
@@ -243,20 +233,6 @@ export default function StepsScreen() {
       setHasNetError(true);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const toggleTreadmillMode = async () => {
-    try {
-      const nextMode = !isTreadmillMode;
-      setIsTreadmillMode(nextMode);
-      treadmillModeRef.current = nextMode;
-      await AsyncStorage.setItem(TREADMILL_MODE_KEY, JSON.stringify(nextMode));
-
-      // Refresh immediately when switching modes
-      fetchCloudMetrics();
-    } catch (error) {
-      console.error("Configuration toggle write error:", error);
     }
   };
 
@@ -363,17 +339,17 @@ export default function StepsScreen() {
     // ✅ SMART POLLING: Check every 4 seconds
     const dataPollTimer = setInterval(async () => {
       const { getQueueSize } = require("../utils/stepTracker");
-      
+
       const queueSize = await getQueueSize();
-      
+
       if (queueSize > 0) {
         // 💡 PRO TIP: Only fetch if we are actually connected to the internet
         // If you don't have NetInfo installed, you can remove this inner check.
         const NetInfo = require("@react-native-community/netinfo").default;
         const netState = await NetInfo.fetch();
-        
+
         if (netState.isConnected && netState.isInternetReachable !== false) {
-          fetchCloudMetrics(); 
+          fetchCloudMetrics();
         }
       }
     }, 4000);
@@ -481,7 +457,7 @@ export default function StepsScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
       <LinearGradient colors={["#000000", "#111111"]} style={styles.container}>
-        {/* ✅ ADD THIS PROFESSIONAL HEADER */}
+        {/* ✅ PROFESSIONAL HEADER */}
         <View style={styles.pageHeaderBlock}>
           <Text style={styles.pageHeaderTitle}>Fitness Tracker</Text>
           <Text style={styles.pageHeaderSubtitle}>
@@ -529,96 +505,77 @@ export default function StepsScreen() {
           </View>
         </View>
 
-        <View style={styles.mainProgressArea}>
-          <MaterialCommunityIcons
-            name={isTreadmillMode ? "run-fast" : "walk"}
-            size={60}
-            color="#4ecca3"
-          />
-          <Text style={styles.stepCount}>
-            {activeDisplaySteps.toLocaleString()}
-          </Text>
-          <Text style={styles.stepLabel}>STEPS TODAY</Text>
-          <View style={styles.progressBarBg}>
-            <View
-              style={[styles.progressBarFill, { width: `${progress * 100}%` }]}
+        <View style={styles.centeredContent}>
+          <View style={styles.mainProgressArea}>
+            <MaterialCommunityIcons
+              name={isTreadmillMode ? "run-fast" : "walk"}
+              size={60}
+              color="#4ecca3"
             />
-          </View>
-        </View>
-
-        <View style={styles.statsGrid}>
-          <View style={styles.statItem}>
-            <Ionicons name="location" size={24} color="#4ecca3" />
-            <Text style={styles.statVal}>{distanceKm}</Text>
-            <Text style={styles.statLabel}>KM</Text>
-          </View>
-
-          <View
-            style={[
-              styles.statItem,
-              {
-                borderLeftWidth: 1,
-                borderRightWidth: 1,
-                borderColor: "#ffffff20",
-              },
-            ]}
-          >
-            <MaterialCommunityIcons name="fire" size={24} color="#ff6b35" />
-            <Text style={[styles.statVal, { color: "#ff6b35" }]}>
-              {caloriesBurned}
+            <Text style={styles.stepCount}>
+              {activeDisplaySteps.toLocaleString()}
             </Text>
-            <Text style={styles.statLabel}>CALORIES</Text>
+            <Text style={styles.stepLabel}>STEPS TODAY</Text>
+            <View style={styles.progressBarBg}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${progress * 100}%` },
+                ]}
+              />
+            </View>
           </View>
 
-          <View
-            style={[
-              styles.statItem,
-              {
-                borderLeftWidth: 1,
-                borderRightWidth: 1,
-                borderColor: "#ffffff20",
-              },
-            ]}
-          >
-            <Ionicons name="flag" size={24} color="#4ecca3" />
-            <Text style={styles.statVal}>
-              {remainingSteps.toLocaleString()}
-            </Text>
-            <Text style={styles.statLabel}>LEFT</Text>
-          </View>
+          <View style={styles.statsGrid}>
+            <View style={styles.statItem}>
+              <Ionicons name="location" size={24} color="#4ecca3" />
+              <Text style={styles.statVal}>{distanceKm}</Text>
+              <Text style={styles.statLabel}>KM</Text>
+            </View>
 
-          <View style={styles.statItem}>
-            <Ionicons name="trending-up" size={24} color="#4ecca3" />
-            <Text style={styles.statVal}>{targetSteps.toLocaleString()}</Text>
-            <Text style={styles.statLabel}>GOAL</Text>
+            <View
+              style={[
+                styles.statItem,
+                {
+                  borderLeftWidth: 1,
+                  borderRightWidth: 1,
+                  borderColor: "#ffffff20",
+                },
+              ]}
+            >
+              <MaterialCommunityIcons name="fire" size={24} color="#ff6b35" />
+              <Text style={[styles.statVal, { color: "#ff6b35" }]}>
+                {caloriesBurned}
+              </Text>
+              <Text style={styles.statLabel}>CALORIES</Text>
+            </View>
+
+            <View
+              style={[
+                styles.statItem,
+                {
+                  borderLeftWidth: 1,
+                  borderRightWidth: 1,
+                  borderColor: "#ffffff20",
+                },
+              ]}
+            >
+              <Ionicons name="flag" size={24} color="#4ecca3" />
+              <Text style={styles.statVal}>
+                {remainingSteps.toLocaleString()}
+              </Text>
+              <Text style={styles.statLabel}>LEFT</Text>
+            </View>
+
+            <View style={styles.statItem}>
+              <Ionicons name="trending-up" size={24} color="#4ecca3" />
+              <Text style={styles.statVal}>{targetSteps.toLocaleString()}</Text>
+              <Text style={styles.statLabel}>GOAL</Text>
+            </View>
           </View>
         </View>
 
         <View style={styles.buttonContainer}>
-          <TouchableOpacity
-            style={[
-              styles.treadmillBtn,
-              isTreadmillMode && styles.treadmillBtnActive,
-            ]}
-            onPress={toggleTreadmillMode}
-          >
-            <MaterialCommunityIcons
-              name="run"
-              size={20}
-              color={isTreadmillMode ? "#000000" : "#4ecca3"}
-            />
-            <Text
-              style={[
-                styles.treadmillBtnText,
-                isTreadmillMode && styles.treadmillBtnTextActive,
-              ]}
-            >
-              {isTreadmillMode
-                ? "Switch to Walking Mode"
-                : "Switch to Treadmill Mode"}
-            </Text>
-          </TouchableOpacity>
-
           <View style={styles.secondaryRow}>
             <TouchableOpacity
               style={styles.outlineBtn}
@@ -697,11 +654,15 @@ export default function StepsScreen() {
 }
 
 const styles = StyleSheet.create({
+  centeredContent: {
+    flex: 1,
+    justifyContent: "center",
+  },
   container: { flex: 1, paddingHorizontal: 15 },
   pageHeaderBlock: {
     alignItems: "center",
-    marginTop: 0, // ✅ Changed from 5 to 0
-    marginBottom: 10, // ✅ Changed from 15 to 10
+    marginTop: 0,
+    marginBottom: 10,
   },
   pageHeaderTitle: {
     fontSize: 24,
@@ -800,21 +761,6 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   buttonContainer: { marginBottom: 20, paddingHorizontal: 5 },
-  treadmillBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: "#ffffff08",
-    borderWidth: 1.5,
-    borderColor: "#4ecca360",
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginBottom: 14,
-  },
-  treadmillBtnActive: { backgroundColor: "#4ecca3", borderColor: "#4ecca3" },
-  treadmillBtnText: { color: "#ffffff", fontWeight: "700", fontSize: 14 },
-  treadmillBtnTextActive: { color: "#000000" },
   outlineBtn: {
     flex: 1,
     borderWidth: 1.5,
