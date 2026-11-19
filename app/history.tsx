@@ -2,7 +2,6 @@ import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
-import Svg, { Circle } from "react-native-svg";
 import {
   ActivityIndicator,
   Dimensions,
@@ -12,59 +11,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
-
-const CustomProgressRing = ({ percentage }) => {
-  const radius = 42;
-  const strokeWidth = 6;
-  const circumference = 2 * Math.PI * radius;
-  
-  // Safely calculate offset (prevent NaN)
-  const safePercent = isNaN(percentage) ? 0 : Math.min(100, Math.max(0, percentage));
-  const strokeDashoffset = circumference - (safePercent / 100) * circumference;
-
-  return (
-    <View style={{ width: 100, height: 100, alignItems: "center", justifyContent: "center", marginVertical: 10 }}>
-      <Svg width="100" height="100" viewBox="0 0 100 100" style={{ transform: [{ rotate: "-90deg" }] }}>
-        {/* Background Circle */}
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#ffffff15"
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-        {/* Progress Circle */}
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#4ecca3"
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </Svg>
-      {/* Text in the center */}
-      <View style={{ position: "absolute", alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ fontSize: 18, fontWeight: "800", color: "#ffffff" }}>
-          {Math.round(safePercent)}%
-        </Text>
-      </View>
-    </View>
-  );
-};
 
 export default function HistoryScreen() {
   const [history, setHistory] = useState([]);
   const [target, setTarget] = useState(5000);
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
-  const [summary, setSummary] = useState(null); // ← ADD
+  const [summary, setSummary] = useState(null);
 
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
   const router = useRouter();
@@ -85,7 +41,7 @@ export default function HistoryScreen() {
 
       if (dataRes.status === 401) {
         clearTimeout(timeoutId);
-        return router.replace("/login?sessionExpired=true"); // ✅ Added parameter
+        return router.replace("/login?sessionExpired=true");
       }
       if (!dataRes.ok) throw new Error("Target endpoint error");
 
@@ -106,7 +62,7 @@ export default function HistoryScreen() {
 
       if (res.status === 401) {
         clearTimeout(timeoutId);
-        return router.replace("/login?sessionExpired=true"); // ✅ Added parameter
+        return router.replace("/login?sessionExpired=true");
       }
       if (!res.ok) throw new Error("Performance endpoint error");
 
@@ -117,12 +73,11 @@ export default function HistoryScreen() {
 
       const json = await res.json();
       if (json.status === "success") {
-        // Only keep entries that exist from DB (prevents injecting false 0-value filler days)
         const activeHistory = (json.history || []).filter(
           (item) => item && item.date,
         );
         setHistory(activeHistory);
-        setSummary(json.summary || null); // ← ADD
+        setSummary(json.summary || null);
         setHasNetError(false);
       }
 
@@ -137,14 +92,11 @@ export default function HistoryScreen() {
     }
   };
 
-  // Header Block Component
-  // Header Block Component
   const renderHeaderSummary = () => {
     if (history.length === 0) return null;
 
     return (
       <View style={styles.summaryCard}>
-        {/* Title Row */}
         <View style={styles.summaryTitleRow}>
           <View style={styles.summaryIconWrapper}>
             <MaterialCommunityIcons
@@ -162,76 +114,27 @@ export default function HistoryScreen() {
             <Text style={styles.summaryTitleSubtext}>
               Your Complete Fitness Journey
             </Text>
-            {history.length > 1 && (
-              <Text style={styles.summaryDaysText}>
-                {summary?.days_tracked ?? history.length} days tracked
-              </Text>
-            )}
           </View>
         </View>
 
-        {/* Walk vs Treadmill Columns */}
-        <View style={styles.summarySplitRow}>
-          {/* Walking Column */}
-          <View style={styles.summaryColumn}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons name="walk" size={14} color="#4ecca3" />
-              <Text style={styles.summaryColLabel}>WALKING</Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.walking_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.walking_km?.display ?? "0"} KM •{" "}
-              {summary?.walking_cal?.display ?? "0"} CAL
-            </Text>
-          </View>
-
-          {/* Treadmill Column */}
-          <View style={[styles.summaryColumn, styles.summaryColumnDivider]}>
-            <View style={styles.summaryColHeader}>
-              <MaterialCommunityIcons
-                name="run-fast"
-                size={14}
-                color="#ff6b35"
-              />
-              <Text style={[styles.summaryColLabel, { color: "#ff6b35" }]}>
-                TREADMILL
-              </Text>
-            </View>
-            <Text style={styles.summaryColVal}>
-              {summary?.treadmill_steps?.display ?? "—"}{" "}
-              <Text style={styles.unitText}>STEPS</Text>
-            </Text>
-            <Text style={styles.summarySubVal}>
-              {summary?.treadmill_km?.display ?? "0"} KM •{" "}
-              {summary?.treadmill_cal?.display ?? "0"} CAL
-            </Text>
-          </View>
-        </View>
-
-        {/* Total Aggregate Strip */}
         <View style={styles.summaryTotalStrip}>
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="shoe-print"
               size={16}
-              color="#ffffff"
+              color="#4ecca3"
             />
-            <Text style={styles.stripLabel}>TOTAL STEPS</Text>
+            <Text style={styles.stripLabel}>STEPS</Text>
             <Text style={styles.stripVal}>
               {summary?.combined_steps?.display ?? "—"}
             </Text>
           </View>
-
           <View style={styles.stripMetricDivider} />
-
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="map-marker-distance"
               size={16}
-              color="#ffffff"
+              color="#4ecca3"
             />
             <Text style={styles.stripLabel}>DISTANCE</Text>
             <Text style={styles.stripVal}>
@@ -239,15 +142,16 @@ export default function HistoryScreen() {
               <Text style={styles.unitText}>KM</Text>
             </Text>
           </View>
-
           <View style={styles.stripMetricDivider} />
-
           <View style={styles.stripMetric}>
-            <MaterialCommunityIcons name="fire" size={16} color="#ff6b35" />
-            <Text style={styles.stripLabel}>ENERGY</Text>
-            <Text style={[styles.stripVal, { color: "#ff6b35" }]}>
-              {summary?.combined_cal?.display ?? "0"}{" "}
-              <Text style={styles.unitText}>CAL</Text>
+            <MaterialCommunityIcons
+              name="calendar-check"
+              size={16}
+              color="#4ecca3"
+            />
+            <Text style={styles.stripLabel}>DAYS ACTIVE</Text>
+            <Text style={styles.stripVal}>
+              {summary?.days_tracked ?? history.length}
             </Text>
           </View>
         </View>
@@ -267,32 +171,34 @@ export default function HistoryScreen() {
 
   const renderDayBlock = ({ item }) => {
     const dayTarget = item.target_steps || target || 5000;
-
     const walkSteps =
       item.walking_steps !== undefined ? item.walking_steps : item.steps || 0;
-    const treadSteps =
-      item.treadmill_steps !== undefined ? item.treadmill_steps : 0;
 
     const walkKm = (walkSteps * 0.000762).toFixed(2);
     const walkCal = (walkSteps * 0.04).toFixed(0);
 
-    const treadKm = (treadSteps * 0.000762).toFixed(2);
-    const treadCal = (treadSteps * 0.0575).toFixed(0);
+    const pace =
+      walkSteps > 0 ? (1000 / (walkSteps * 0.000762)).toFixed(1) : "0.0";
+    const stepsPerKm =
+      walkSteps > 0
+        ? Math.round(walkSteps / Math.max(0.01, parseFloat(walkKm)))
+        : 0;
 
-    const combinedSteps = walkSteps + treadSteps;
-    const combinedKm = (combinedSteps * 0.000762).toFixed(2);
-    const combinedCal = (parseInt(walkCal) + parseInt(treadCal)).toString();
-    const stepsLeft = Math.max(0, dayTarget - combinedSteps);
-    const percentage = Math.min(100, (combinedSteps / dayTarget) * 100);
+    const stepsLeft = Math.max(0, dayTarget - walkSteps);
+    const percentage = Math.min(100, (walkSteps / dayTarget) * 100);
+
+    // Thin Ring Math
+    const radius = 38;
+    const strokeWidth = 5; // Very thin, elegant stroke
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
     return (
       <View style={styles.card}>
-        <Text style={styles.dateText}>
-          {item.date_full ?? item.date}
-        </Text>
+        <Text style={styles.dateText}>{item.date_full ?? item.date}</Text>
+
         <View style={styles.modeSplitRow}>
-          {/* Walking Column */}
-          <View style={styles.modeColumn}>
+          <View style={[styles.modeColumn, { flex: 1.1 }]}>
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons name="walk" size={18} color="#4ecca3" />
               <Text style={styles.columnHeading}>WALKING</Text>
@@ -313,49 +219,51 @@ export default function HistoryScreen() {
             </View>
           </View>
 
-          {/* Treadmill Column */}
           <View
             style={[
               styles.modeColumn,
-              { borderLeftWidth: 1, borderColor: "#ffffff15", paddingLeft: 15 },
+              {
+                borderLeftWidth: 1,
+                borderColor: "#ffffff15",
+                paddingLeft: 15,
+                flex: 0.9,
+              },
             ]}
           >
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons
-                name="run-fast"
+                name="speedometer"
                 size={18}
                 color="#4ecca3"
               />
-              <Text style={styles.columnHeading}>TREADMILL</Text>
+              <Text style={styles.columnHeading}>METRICS</Text>
             </View>
             <View style={styles.modeStatBlock}>
-              <Text style={styles.modeStatVal}>
-                {treadSteps.toLocaleString()}
+              <Text style={styles.modeStatVal}>{pace}</Text>
+              <Text style={styles.modeStatLabel}>PACE (MIN/KM)</Text>
+              <Text style={styles.modeStatVal}>{stepsPerKm}</Text>
+              <Text style={styles.modeStatLabel}>STEPS / KM</Text>
+              <Text style={[styles.modeStatVal, { color: "#4ecca3" }]}>
+                {Math.round(percentage)}%{" "}
+                <Text style={styles.unitText}>DONE</Text>
               </Text>
-              <Text style={styles.modeStatLabel}>STEPS</Text>
-              <Text style={styles.modeStatVal}>
-                {treadKm} <Text style={styles.unitText}>KM</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>DISTANCE</Text>
-              <Text style={[styles.modeStatVal, { color: "#ff6b35" }]}>
-                {treadCal} <Text style={styles.unitText}>CAL</Text>
-              </Text>
-              <Text style={styles.modeStatLabel}>ENERGY</Text>
+              <Text style={styles.modeStatLabel}>GOAL PROGRESS</Text>
             </View>
           </View>
         </View>
 
-        {/* Combined Performance Summary Row */}
         <View style={styles.combinedDivider} />
-        <Text style={styles.combinedHeading}>COMBINED PERFORMANCE</Text>
 
-        <View style={styles.combinedContent}>
-          <View style={styles.combinedMetrics}>
+        <Text style={styles.combinedHeading}>DAILY GOAL PROGRESS</Text>
+
+        <View style={styles.progressLayoutWrapper}>
+          {/* Left side: Numbers */}
+          <View style={styles.numbersColumn}>
             <View style={styles.stepMetricItem}>
-              <Ionicons name="checkmark-circle" size={20} color="#4ecca3" />
+              <Ionicons name="checkmark-circle" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
-                  {combinedSteps.toLocaleString()}
+                  {walkSteps.toLocaleString()}
                 </Text>
                 <Text style={styles.stepMetricLabel}>TOTAL STEPS</Text>
               </View>
@@ -364,8 +272,8 @@ export default function HistoryScreen() {
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
               <Ionicons
                 name="flag"
-                size={20}
-                color={stepsLeft === 0 ? "#4ecca3" : "#a4b0be"}
+                size={18}
+                color={stepsLeft === 0 ? "#4ecca3" : "#ff6b35"}
               />
               <View style={styles.textDataContainer}>
                 <Text
@@ -376,12 +284,12 @@ export default function HistoryScreen() {
                 >
                   {stepsLeft.toLocaleString()}
                 </Text>
-                <Text style={styles.stepMetricLabel}>STEPS REMAINING</Text>
+                <Text style={styles.stepMetricLabel}>STEPS LEFT</Text>
               </View>
             </View>
 
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
-              <Ionicons name="trending-up" size={20} color="#4ecca3" />
+              <Ionicons name="trending-up" size={18} color="#4ecca3" />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
                   {dayTarget.toLocaleString()}
@@ -391,37 +299,38 @@ export default function HistoryScreen() {
             </View>
           </View>
 
-          {/* Right Progress Area (Temporarily showing simple text instead of the crashing ring) */}
-          {/* Right Progress Area (Safe Custom SVG Ring) */}
-          <View style={styles.imageRingContainer}>
-            <CustomProgressRing percentage={percentage} />
-            
-            <View style={styles.imageSeparatorLine} />
-
-            <View style={styles.imageMetricsArea}>
-              <View style={styles.imageMetricBadgeRow}>
-                <Ionicons
-                  name="location"
-                  size={18}
-                  color="#4ecca3"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={styles.imageStatText}>
-                  {combinedKm} <Text style={styles.imageLabelText}>KM</Text>
-                </Text>
-              </View>
-
-              <View style={[styles.imageMetricBadgeRow, { marginTop: 6 }]}>
-                <MaterialCommunityIcons
-                  name="fire"
-                  size={18}
-                  color="#ff6b35"
-                  style={{ marginRight: 4 }}
-                />
-                <Text style={[styles.imageStatText, { color: "#ff6b35" }]}>
-                  {combinedCal} <Text style={styles.imageLabelText}>CAL</Text>
-                </Text>
-              </View>
+          {/* Right side: Thin Ring */}
+          <View style={styles.thinRingWrapper}>
+            <Svg
+              width="90"
+              height="90"
+              viewBox="0 0 90 90"
+              style={{ transform: [{ rotate: "-90deg" }] }}
+            >
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#ffffff08"
+                strokeWidth={strokeWidth}
+                fill="none"
+              />
+              <Circle
+                cx="45"
+                cy="45"
+                r={radius}
+                stroke="#4ecca3"
+                strokeWidth={strokeWidth}
+                fill="none"
+                strokeDasharray={circumference}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+              />
+            </Svg>
+            <View style={styles.ringTextContainer}>
+              <Text style={styles.ringPercentText}>
+                {Math.round(percentage)}%
+              </Text>
             </View>
           </View>
         </View>
@@ -482,8 +391,7 @@ export default function HistoryScreen() {
             }}
           >
             FitWisely needs a live network link to load your historical
-            performance data. Please check your internet connection or restart
-            the app.
+            performance data.
           </Text>
           <TouchableOpacity
             style={{
@@ -535,15 +443,9 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 10,
   },
-listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
-  summaryDaysText: {
-    color: "#4ecca3",
-    fontSize: 11,
-    marginTop: 2,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  /* 30-Day Overall Summary Block */
+  listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
+
+  // Summary Block
   summaryCard: {
     backgroundColor: "#1a1a1a",
     borderRadius: 20,
@@ -557,8 +459,6 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     shadowOpacity: 0.1,
     shadowRadius: 10,
   },
-
-  /* Summary Title */
   summaryTitleRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -589,49 +489,6 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     marginTop: 2,
     fontWeight: "500",
   },
-
-  /* Walk vs Treadmill Split */
-  summarySplitRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  summaryColumn: {
-    flex: 1,
-    paddingRight: 10,
-  },
-  summaryColumnDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: "#4ecca320",
-    paddingLeft: 14,
-  },
-  summaryColHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 4,
-  },
-  summaryColLabel: {
-    color: "#4ecca3",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  summaryColVal: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "800",
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
-  summarySubVal: {
-    color: "#a4b0be",
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: "500",
-  },
-
-  /* Total Strip */
   summaryTotalStrip: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -642,16 +499,8 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     borderWidth: 1,
     borderColor: "#ffffff10",
   },
-  stripMetric: {
-    alignItems: "center",
-    flex: 1,
-    gap: 2,
-  },
-  stripMetricDivider: {
-    width: 1,
-    height: "70%",
-    backgroundColor: "#ffffff15",
-  },
+  stripMetric: { alignItems: "center", flex: 1, gap: 2 },
+  stripMetricDivider: { width: 1, height: "70%", backgroundColor: "#ffffff15" },
   stripLabel: {
     color: "#a4b0be",
     fontSize: 9,
@@ -659,14 +508,9 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     letterSpacing: 0.8,
     marginTop: 4,
   },
-  stripVal: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "800",
-    marginTop: 4,
-  },
+  stripVal: { color: "#ffffff", fontSize: 16, fontWeight: "800", marginTop: 4 },
 
-  /* Daily Card Styles - KEEP UNTOUCHED */
+  // Day Block
   card: {
     backgroundColor: "#ffffff09",
     padding: 18,
@@ -682,7 +526,6 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     marginBottom: 16,
     letterSpacing: 0.3,
   },
-
   modeSplitRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -723,6 +566,7 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
   },
   unitText: { fontSize: 11, color: "#a4b0be", fontWeight: "500" },
 
+  // Combined / Goal Section
   combinedDivider: {
     height: 1.5,
     backgroundColor: "#ffffff15",
@@ -736,13 +580,18 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     marginBottom: 14,
     textAlign: "left",
   },
-  combinedContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  combinedMetrics: { flex: 1.1, paddingRight: 5 },
 
+  // New Layout: Numbers Left, Ring Right
+  progressLayoutWrapper: {
+    flexDirection: "row",
+    justifyContent: "space-between", // Pushes ring to the right, numbers to left
+    alignItems: "center",
+    width: "100%",
+  },
+  numbersColumn: {
+    flexDirection: "column",
+    justifyContent: "center",
+  },
   stepMetricItem: { flexDirection: "row", alignItems: "center", gap: 12 },
   textDataContainer: { flexDirection: "column" },
   stepText: {
@@ -759,39 +608,26 @@ listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
     marginTop: 2,
   },
 
-  imageRingContainer: {
-    flex: 0.9,
-    alignItems: "center",
+  // Thin Ring
+  thinRingWrapper: {
+    width: 90,
+    height: 90,
     justifyContent: "center",
-    paddingLeft: 10,
+    alignItems: "center",
   },
-  imageSeparatorLine: {
-    width: "85%",
-    height: 1,
-    backgroundColor: "#ffffff15",
-    marginVertical: 14,
-  },
-  imageMetricsArea: {
-    width: "100%",
+  ringTextContainer: {
+    position: "absolute",
     alignItems: "center",
     justifyContent: "center",
   },
-  imageMetricBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imageStatText: {
+  ringPercentText: {
     color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  imageLabelText: {
-    color: "#a4b0be",
-    fontSize: 14,
+    fontSize: 14, // Small, elegant text inside the ring
     fontWeight: "600",
+    letterSpacing: 0,
   },
 
+  // Empty State
   emptyContainer: {
     flex: 1,
     justifyContent: "center",

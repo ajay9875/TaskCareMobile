@@ -30,14 +30,11 @@ try {
 }
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
-const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
 const BATTERY_PROMPT_KEY = "@taskcare360_battery_prompt_shown";
 
 export default function StepsScreen() {
   const [walkingSteps, setWalkingSteps] = useState(0);
-  const [treadmillSteps, setTreadmillSteps] = useState(0);
   const [targetSteps, setTargetSteps] = useState(5000);
-  const [isTreadmillMode, setIsTreadmillMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -46,7 +43,6 @@ export default function StepsScreen() {
   const [updatingGoal, setUpdatingGoal] = useState(false);
 
   const blinkAnim = useRef(new Animated.Value(1)).current;
-  const treadmillModeRef = useRef(isTreadmillMode);
   const isCheckingPermissions = useRef(false);
   const router = useRouter();
 
@@ -173,10 +169,6 @@ export default function StepsScreen() {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      const isTreadmill = false;
-      setIsTreadmillMode(false);
-      treadmillModeRef.current = false;
-      await AsyncStorage.setItem(TREADMILL_MODE_KEY, JSON.stringify(false));
 
       // ✅ 1. Read the HARDWARE step count directly from the phone
       let hardwareSteps = 0;
@@ -229,9 +221,7 @@ export default function StepsScreen() {
         );
 
         setWalkingSteps((prev) => Math.max(prev, finalWalking));
-        setTreadmillSteps((prev) =>
-          Math.max(prev, data.treadmill_steps + localBufferTreadmill),
-        );
+        // ✅ Treadmill step state updates removed
 
         setHasNetError(false);
       }
@@ -302,7 +292,7 @@ export default function StepsScreen() {
     }
   };
 
-    // ✅ On focus/refetch, trigger recovery and refresh UI
+  // ✅ On focus/refetch, trigger recovery and refresh UI
   useFocusEffect(
     useCallback(() => {
       // 1. Ask the tracker to recover missed steps
@@ -329,16 +319,14 @@ export default function StepsScreen() {
     const stepTakeListener = DeviceEventEmitter.addListener(
       "REALTIME_STEP_TAKEN",
       (event) => {
-        if (treadmillModeRef.current) {
-          setTreadmillSteps((prev) => prev + event.delta);
-        } else {
-          setWalkingSteps((prev) => prev + event.delta);
-        }
-        // ✅ ALSO force a fetch to grab the latest hardware/server state
-        fetchCloudMetrics();
+        // ✅ Walking mode only
+        setWalkingSteps((prev) => prev + event.delta);
+        
+        // ✅ Force the UI to grab the latest hardware count instantly
+        fetchCloudMetrics(); 
       },
     );
-    
+
     Animated.loop(
       Animated.sequence([
         Animated.timing(blinkAnim, {
@@ -358,23 +346,15 @@ export default function StepsScreen() {
       setCurrentTime(new Date());
     }, 1000);
 
-    // ✅ SMART POLLING: Check every 4 seconds
+    // ✅ SMART POLLING: Fetch every 3 seconds unconditionally
     const dataPollTimer = setInterval(async () => {
-      const { getQueueSize } = require("../utils/stepTracker");
+      const NetInfo = require("@react-native-community/netinfo").default;
+      const netState = await NetInfo.fetch();
 
-      const queueSize = await getQueueSize();
-
-      if (queueSize > 0) {
-        // 💡 PRO TIP: Only fetch if we are actually connected to the internet
-        // If you don't have NetInfo installed, you can remove this inner check.
-        const NetInfo = require("@react-native-community/netinfo").default;
-        const netState = await NetInfo.fetch();
-
-        if (netState.isConnected && netState.isInternetReachable !== false) {
-          fetchCloudMetrics();
-        }
+      if (netState.isConnected && netState.isInternetReachable !== false) {
+        fetchCloudMetrics();
       }
-    }, 3000);
+    }, 3000); // 👈 3 seconds
 
     return () => {
       syncListener.remove();
@@ -467,11 +447,9 @@ export default function StepsScreen() {
     );
   }
 
-  const activeDisplaySteps = isTreadmillMode ? treadmillSteps : walkingSteps;
+  const activeDisplaySteps = walkingSteps;
   const distanceKm = (activeDisplaySteps * 0.000762).toFixed(2);
-  const caloriesBurned = (
-    activeDisplaySteps * (isTreadmillMode ? 0.0575 : 0.04)
-  ).toFixed(1);
+  const caloriesBurned = (activeDisplaySteps * 0.04).toFixed(1);
 
   const remainingSteps = Math.max(0, targetSteps - activeDisplaySteps);
   const progress = Math.min(activeDisplaySteps / targetSteps, 1);
@@ -489,9 +467,7 @@ export default function StepsScreen() {
         <View style={styles.header}>
           <View style={styles.liveBadge}>
             <Animated.View style={[styles.liveDot, { opacity: blinkAnim }]} />
-            <Text style={styles.liveText}>
-              {isTreadmillMode ? "TREADMILL MODE" : "WALKING MODE"}
-            </Text>
+            <Text style={styles.liveText}>WALKING MODE</Text>
           </View>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
             <TouchableOpacity
@@ -531,7 +507,7 @@ export default function StepsScreen() {
         <View style={styles.centeredContent}>
           <View style={styles.mainProgressArea}>
             <MaterialCommunityIcons
-              name={isTreadmillMode ? "run-fast" : "walk"}
+              name="walk"
               size={60}
               color="#4ecca3"
             />

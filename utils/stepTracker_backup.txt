@@ -1,20 +1,8 @@
-// utils/stepTracker.ts
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import * as BackgroundFetch from "expo-background-fetch";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
-import {
-  PermissionStatus,
-  getPermissionsAsync,
-  getTodayStepCountAsync,
-  isAvailableAsync,
-  isBackgroundAvailableAsync,
-  requestBackgroundPermissionsAsync,
-  requestPermissionsAsync,
-  startStepCountUpdatesAsync,
-  type StepCountTaskData,
-} from "expo-pedometer";
 import * as TaskManager from "expo-task-manager";
 import {
   Alert,
@@ -26,6 +14,25 @@ import {
 
 import StepTracker from "react-native-step-tracker-pro";
 
+// ✅ Safely attempt to load ExpoPedometer. If it's Expo Go, it will be undefined.
+let ExpoPedometer: any = null;
+try {
+  ExpoPedometer = require("expo-pedometer");
+} catch (e) {
+  console.log("[stepTracker] ExpoPedometer native module not found. Step tracking disabled.");
+}
+
+// Destructure safe fallbacks
+const PermissionStatus = ExpoPedometer?.PermissionStatus;
+const getPermissionsAsync = ExpoPedometer?.getPermissionsAsync;
+const getTodayStepCountAsync = ExpoPedometer?.getTodayStepCountAsync;
+const isAvailableAsync = ExpoPedometer?.isAvailableAsync;
+const isBackgroundAvailableAsync = ExpoPedometer?.isBackgroundAvailableAsync;
+const requestBackgroundPermissionsAsync = ExpoPedometer?.requestBackgroundPermissionsAsync;
+const requestPermissionsAsync = ExpoPedometer?.requestPermissionsAsync;
+const startStepCountUpdatesAsync = ExpoPedometer?.startStepCountUpdatesAsync;
+type StepCountTaskData = any;
+
 // ─── Constants ───────────────────────────────────────────────
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
@@ -36,16 +43,18 @@ const LAST_SYNCED_COUNT_KEY = "@taskcare360_last_synced_count";
 const LAST_SYNCED_DATE_KEY = "@taskcare360_last_synced_date";
 const LAST_TIMESTAMP_KEY = "@taskcare360_last_sync_time";
 const TREADMILL_MODE_KEY = "@taskcare360_treadmill_mode";
+const RECOVERY_LOCK_KEY = "@taskcare360_recovery_lock";
 
 const STEP_COUNT_TASK = "taskcare360-step-count-task";
 const BACKGROUND_FETCH_TASK = "taskcare360-background-fetch";
 
 const SYNC_DEBOUNCE_MS = 2000;
-const FOREGROUND_POLL_MS = 2000;
+const FOREGROUND_POLL_MS = 5000; // Changed from 2000 to 5000 to reduce race conditions
 const FETCH_TIMEOUT_MS = 20000;
 const MAX_BATCH_SIZE = 50;
 const RETRY_INTERVAL_MS = 30000;
 const RECONCILE_MIN_INTERVAL_MS = 60_000;
+const RECOVERY_LOCK_MS = 10_000; // 10s lock timeout
 
 // ─── Module state ────────────────────────────────────────────
 let isFlushing = false;
@@ -261,6 +270,28 @@ export const scheduleFlush = () => {
   }, SYNC_DEBOUNCE_MS);
 };
 
+// ─── Recovery Lock (prevents cross-context race conditions) ───
+const acquireRecoveryLock = async (): Promise<boolean> => {
+  try {
+    const raw = await AsyncStorage.getItem(RECOVERY_LOCK_KEY);
+    const lockedUntil = raw ? parseInt(raw, 10) : 0;
+    if (Date.now() < lockedUntil) return false;
+    await AsyncStorage.setItem(
+      RECOVERY_LOCK_KEY,
+      String(Date.now() + RECOVERY_LOCK_MS),
+    );
+    return true;
+  } catch {
+    return true; // fail-safe: allow recovery if storage fails
+  }
+};
+
+const releaseRecoveryLock = async () => {
+  try {
+    await AsyncStorage.removeItem(RECOVERY_LOCK_KEY);
+  } catch {}
+};
+
 // ─── Read pedometer delta (THE SOURCE OF TRUTH) ────────────
 const readPedometerDelta = async (): Promise<{
   delta: number;
@@ -289,7 +320,9 @@ const readPedometerDelta = async (): Promise<{
     const delta = todaySteps - lastSynced;
 
     if (delta < 0) {
-      await AsyncStorage.setItem(LAST_SYNCED_COUNT_KEY, todaySteps.toString());
+      // 🛑 IMPORTANT: DO NOT write the baseline here!
+      // The reconcile function is responsible for pushing the baseline up.
+      // If we reset it down here, we create an infinite loop that drops steps.
       return { delta: 0, current: todaySteps };
     }
 
@@ -326,8 +359,6 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
     const lastSyncedLocal = lastSyncedRaw ? parseInt(lastSyncedRaw, 10) : 0;
 
     // ✅ Reconcile when the server has already recorded these steps.
-    //    Use Math.max to also catch the case where server == pedometer
-    //    (native tracker reported the same physical steps).
     const targetBaseline = Math.max(serverTotal, todaySteps);
     if (targetBaseline > lastSyncedLocal) {
       await AsyncStorage.setItem(
@@ -338,7 +369,6 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
         `[stepTracker] Reconciled baseline upward: ${lastSyncedLocal} → ${targetBaseline} (server=${serverTotal}, pedometer=${todaySteps})`,
       );
     }
-    // Do NOTHING otherwise — let readPedometerDelta compute real deltas
   } catch (e) {
     console.log("[stepTracker] reconcileBaselineFromServer failed:", e);
   }
@@ -346,8 +376,15 @@ const reconcileBaselineFromServer = async (): Promise<void> => {
 
 // ─── Recover missed steps (THE KEY FUNCTION) ────────────────
 export const recoverMissedSteps = async () => {
-  if (isRecovering) return;
+  if (isRecovering) return; // Fast guard for same-context calls
   isRecovering = true;
+
+  // Slow guard for cross-context calls (Headless JS, Background Task)
+  const hasLock = await acquireRecoveryLock();
+  if (!hasLock) {
+    isRecovering = false;
+    return;
+  }
 
   try {
     // Step 1: Check if the server is AHEAD of the pedometer (native sync ran)
@@ -378,6 +415,7 @@ export const recoverMissedSteps = async () => {
     await flushQueue();
   } finally {
     isRecovering = false;
+    await releaseRecoveryLock();
   }
 };
 
@@ -645,6 +683,9 @@ const initLiveNotificationTracker = async () => {
 
 // ─── Public helpers ─────────────────────────────────────────
 export const updateNativeTarget = async (newTarget: number) => {
+  // ✅ Do not attempt to update native notification if module is missing
+  if (!ExpoPedometer) return;
+
   try {
     await StepTracker.updateConfig({
       dailyGoal: newTarget,
@@ -665,7 +706,9 @@ export const initStepTracker = async () => {
   if (initialized) return;
   initialized = true;
 
-  if (!Device.isDevice) {
+    // ✅ If ExpoPedometer is not available (Expo Go / Emulator), skip native setup
+  if (!ExpoPedometer || !Device.isDevice) {
+    console.log("[stepTracker] Native module missing or not a real device. Skipping native init.");
     return;
   }
 
