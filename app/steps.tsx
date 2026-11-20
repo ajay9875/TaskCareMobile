@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
   progressBarText: {
     position: "absolute",
     alignSelf: "center",
-    color: "#000000",
+    color: "#f7f6f6",
     fontSize: 10,
     fontWeight: "900",
     letterSpacing: 0.5,

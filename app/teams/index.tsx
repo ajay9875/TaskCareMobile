@@ -152,7 +152,7 @@ export default function MyTeamScreen() {
     return (team?.members ?? []).filter((m: any) => !!m.is_signed_in).length;
   }
 
-  // Add these helper functions
+// Add these helper functions
 function allTeamsOnlineCount(): number {
   const uniqueUsers = new Set();
   teams.forEach(t => {
@@ -160,6 +160,18 @@ function allTeamsOnlineCount(): number {
       if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
     });
   });
+  return uniqueUsers.size;
+}
+
+function allTeamsMemberCount(): number {
+  const uniqueUsers = new Set();
+
+  teams.forEach((t) => {
+    (t.members ?? []).forEach((m: any) => {
+      uniqueUsers.add(m.user_id);
+    });
+  });
+
   return uniqueUsers.size;
 }
 
@@ -514,9 +526,13 @@ function allTeamsSignedInCount(): number {
               color="#0284C7"
             />
             <Text style={styles.teamStatValue}>
-              {activeTeam?.members?.length ?? 0}
+              {activeTeam
+                ? activeTeam.members?.length ?? 0
+                : allTeamsMemberCount()}
             </Text>
-            <Text style={styles.teamStatLabel}>Members</Text>
+            <Text style={styles.teamStatLabel}>
+              {activeTeam ? "Members" : "Total Members"}
+            </Text>
           </View>
         </View>
 

@@ -51,6 +51,7 @@ Join our community of developers creating universal apps.
 
 # 1. Command to install fresh app and run locally(Android studio): Use after uninstalling app from Android Studio Emulator
 
+npx expo start --android --go
 npx expo start --go
 npx expo prebuild --clean --platform android
 npx expo run:android | npx expo prebuild --platform android

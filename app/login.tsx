@@ -2,8 +2,7 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-// app/login.tsx — top of file
-import { useEffect, useRef, useState } from "react";   // ← add useRef
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   StyleSheet,
@@ -13,58 +12,77 @@ import {
   View,
 } from "react-native";
 import StepTracker from "react-native-step-tracker-pro";
-import LoadingOverlay from "../components/LoadingOverlay"; // ← NEW
+import LoadingOverlay from "../components/LoadingOverlay";
 import { useAuth } from "../context/AuthContext";
 import { registerForPushNotifications } from "../utils/pushNotifications";
 import { getNativeSyncToken, updateNativeTarget } from "../utils/stepTracker";
+
+// 1. IMPORT THE CAPTCHA LIBRARY
+import Recaptcha, { RecaptchaRef } from "react-native-recaptcha-that-works";
+
+// 2. ADD YOUR NEW V2 SITE KEY HERE (Make sure it's the v2 Checkbox key, not Enterprise)
+const RECAPTCHA_SITE_KEY = "6LeaXyouAAAAADrXvmLw58CSALnKXGnLrx7tezvv";
 
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  // 3. CREATE A REF FOR THE CAPTCHA
+  const recaptchaRef = useRef<RecaptchaRef | null>(null);
+
   const router = useRouter();
   const params = useLocalSearchParams();
   const { checkSession } = useAuth();
 
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
-// app/login.tsx — replace the existing useEffect with this expanded version
+  const shownFlags = useRef<{ expired?: boolean; loggedOut?: boolean }>({});
 
-// app/login.tsx — inside the component, before the useEffect
-const shownFlags = useRef<{ expired?: boolean; loggedOut?: boolean }>({});
-
-useEffect(() => {
-  if (params.sessionExpired === "true" && !shownFlags.current.expired) {
-    shownFlags.current.expired = true;
-    Alert.alert(
-      "Access Denied",
-      "Authentication Required. Please sign in to access this section.",
-      [{ text: "OK", onPress: () => router.setParams({}) }],
-      { cancelable: false },
-    );
-    return;
-  }
-
-  if (params.loggedOut === "true" && !shownFlags.current.loggedOut) {
-    shownFlags.current.loggedOut = true;
-    Alert.alert(
-      "Logged Out",
-      "You logged out successfully.",
-      [{ text: "OK", onPress: () => router.setParams({}) }],
-      { cancelable: false },
-    );
-  }
-}, [params.sessionExpired, params.loggedOut]);
-
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert("Error", "Please fill all fields");
+  useEffect(() => {
+    if (params.sessionExpired === "true" && !shownFlags.current.expired) {
+      shownFlags.current.expired = true;
+      Alert.alert(
+        "Access Denied",
+        "Authentication Required. Please sign in to access this section.",
+        [{ text: "OK", onPress: () => router.setParams({}) }],
+        { cancelable: false },
+      );
       return;
     }
 
+    if (params.loggedOut === "true" && !shownFlags.current.loggedOut) {
+      shownFlags.current.loggedOut = true;
+      Alert.alert(
+        "Logged Out",
+        "You logged out successfully.",
+        [{ text: "OK", onPress: () => router.setParams({}) }],
+        { cancelable: false },
+      );
+    }
+  }, [params.sessionExpired, params.loggedOut]);
+
+  // 4. THIS IS NOW JUST A TRIGGER TO OPEN THE CAPTCHA
+  const handleLoginPress = () => {
+    if (!email.trim() || !password) {
+      Alert.alert("Error", "Please fill all fields");
+      return;
+    }
+    // Open the visible checkbox modal
+    recaptchaRef.current?.open();
+  };
+
+  // 5. THIS RUNS AFTER THE USER CHECKS THE BOX
+  const handleCaptchaVerify = async (captchaToken: string) => {
+    recaptchaRef.current?.close();
+    await performLogin(captchaToken);
+  };
+
+  // 6. THIS IS YOUR EXISTING LOGIN LOGIC, NOW ACCEPTING THE TOKEN
+  const performLogin = async (captchaToken: string) => {
     setLoading(true);
-    const startTime = Date.now(); // ⏱️ START TIMER
+    const startTime = Date.now();
 
     try {
       const response = await fetch(`${API_BASE}/login`, {
@@ -74,7 +92,11 @@ useEffect(() => {
           Accept: "application/json",
         },
         credentials: "include",
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password,
+          captcha_token: captchaToken, // Pass the token to your Flask backend
+        }),
       });
 
       const data = await response.json();
@@ -97,10 +119,6 @@ useEffect(() => {
             });
             await StepTracker.syncNow();
             console.log("[login] ✅ Native sync token refreshed");
-          } else {
-            console.log(
-              "[login] ⚠️ getNativeSyncToken returned null — session not yet active",
-            );
           }
         } catch (e) {
           console.log("[login] ❌ Native token refresh failed:", e);
@@ -114,14 +132,10 @@ useEffect(() => {
     } catch (e) {
       Alert.alert("Connection Error", "Check your server connection.");
     } finally {
-      // ⏱️ ENFORCE 2-SECOND MINIMUM DELAY
       const elapsedTime = Date.now() - startTime;
       const minDelay = 2000;
       const remainingTime = Math.max(0, minDelay - elapsedTime);
-
-      setTimeout(() => {
-        setLoading(false);
-      }, remainingTime);
+      setTimeout(() => setLoading(false), remainingTime);
     }
   };
 
@@ -129,25 +143,9 @@ useEffect(() => {
     const tryRegister = async (attempt = 0) => {
       try {
         const token = await registerForPushNotifications();
-        if (token) {
-          console.log("[login] ✅ push token registered on attempt", attempt);
-          return;
-        }
-      } catch (e) {
-        console.log(
-          "[login] push registration error (attempt " + attempt + "):",
-          e,
-        );
-      }
-
-      if (attempt < 3) {
-        console.log("[login] Retrying push registration...", attempt + 1);
-        setTimeout(() => tryRegister(attempt + 1), 1200);
-      } else {
-        console.log(
-          "[login] push registration failed after retries (non-fatal)",
-        );
-      }
+        if (token) return;
+      } catch (e) {}
+      if (attempt < 3) setTimeout(() => tryRegister(attempt + 1), 1200);
     };
     setTimeout(() => tryRegister(0), 600);
   };
@@ -200,10 +198,10 @@ useEffect(() => {
           </TouchableOpacity>
         </View>
 
-        {/* ✅ Button is now clean — no spinner inside */}
+        {/* 7. UPDATE THE ONPRESS HERE */}
         <TouchableOpacity
           style={[styles.button, loading && styles.disabledButton]}
-          onPress={handleLogin}
+          onPress={handleLoginPress}
           disabled={loading}
         >
           <Text style={styles.btnText}>Login</Text>
@@ -224,8 +222,21 @@ useEffect(() => {
         </TouchableOpacity>
       </View>
 
-      {/* ✅ Overlay handles its own text internally */}
       <LoadingOverlay visible={loading} />
+
+      {/* 8. ADD THE CAPTCHA MODAL AT THE BOTTOM */}
+      <Recaptcha
+        ref={recaptchaRef}
+        siteKey={RECAPTCHA_SITE_KEY}
+        baseUrl="https://taskcare360.pythonanywhere.com" // Your production domain
+        onVerify={handleCaptchaVerify}
+        onExpire={() => Alert.alert("Captcha Expired", "Please try again.")}
+        onError={() =>
+          Alert.alert("Captcha Error", "Could not load the challenge.")
+        }
+        enterprise={false}
+        hideBadge={false}
+      />
     </>
   );
 }
@@ -279,9 +290,5 @@ const styles = StyleSheet.create({
   disabledButton: { backgroundColor: "#95a5a6" },
   btnText: { color: "white", textAlign: "center", fontWeight: "bold" },
   linkText: { color: "#3498db", textAlign: "center", marginTop: 20 },
-  forgotlinkText: {
-    color: "#fc2a2a",
-    textAlign: "center",
-    marginTop: 10,
-  },
+  forgotlinkText: { color: "#fc2a2a", textAlign: "center", marginTop: 10 },
 });
