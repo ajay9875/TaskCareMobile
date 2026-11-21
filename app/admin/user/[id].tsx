@@ -6,8 +6,10 @@ import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -42,6 +44,11 @@ export default function AdminUserHistory() {
     label: string;
     color: string;
   } | null>(null);
+
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [resetLoading, setResetLoading] = useState(false);
 
   useEffect(() => {
     fetchUserHistory();
@@ -104,6 +111,59 @@ export default function AdminUserHistory() {
       setHasNetError(true);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAdminPasswordReset = async () => {
+    if (!newPassword.trim() || !confirmPassword.trim()) {
+      alert("Please enter and confirm the new password.");
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      alert("Password must contain at least 6 characters.");
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      alert("Passwords do not match.");
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${id}/reset-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password: newPassword }),
+      });
+
+      const json = await res.json();
+
+      if (res.status === 401) {
+        setResetModalVisible(false);
+        router.replace("/login?sessionExpired=true");
+        return;
+      }
+
+      if (!res.ok) {
+        alert(json.message || "Unable to reset password.");
+        return;
+      }
+
+      alert("User password has been reset successfully.");
+
+      setNewPassword("");
+      setConfirmPassword("");
+      setResetModalVisible(false);
+    } catch (error) {
+      alert("Network error. Please try again.");
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -418,6 +478,71 @@ export default function AdminUserHistory() {
 
   return (
     <LinearGradient colors={["#1a1a2e", "#16213e"]} style={styles.container}>
+      <Modal
+        visible={resetModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.resetModal}>
+            <View style={styles.modalIcon}>
+              <Ionicons name="lock-closed" size={25} color="#4ecca3" />
+            </View>
+
+            <Text style={styles.modalTitle}>Reset User Password</Text>
+
+            <Text style={styles.modalSubtitle}>
+              Set a new password for {userInfo?.name}.
+            </Text>
+
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Enter new password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+              value={newPassword}
+              onChangeText={setNewPassword}
+              editable={!resetLoading}
+            />
+
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Confirm new password"
+              placeholderTextColor="#94A3B8"
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              editable={!resetLoading}
+            />
+
+            <TouchableOpacity
+              style={styles.confirmResetButton}
+              onPress={handleAdminPasswordReset}
+              disabled={resetLoading}
+            >
+              {resetLoading ? (
+                <ActivityIndicator color="#1a1a2e" />
+              ) : (
+                <Text style={styles.confirmResetText}>Update Password</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelResetButton}
+              onPress={() => {
+                setResetModalVisible(false);
+                setNewPassword("");
+                setConfirmPassword("");
+              }}
+              disabled={resetLoading}
+            >
+              <Text style={styles.cancelResetText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       <Text style={styles.headerTitle}>👤 User History</Text>
 
       {hasNetError ? (
@@ -476,6 +601,25 @@ export default function AdminUserHistory() {
           ListHeaderComponent={
             <>
               {renderUserHeader()}
+
+              {userInfo && (
+                <TouchableOpacity
+                  style={styles.resetPasswordButton}
+                  onPress={() => setResetModalVisible(true)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons
+                    name="lock-closed-outline"
+                    size={18}
+                    color="#1a1a2e"
+                  />
+                  <Text style={styles.resetPasswordButtonText}>
+                    Reset User Password
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {renderHeaderSummary()}
               {renderHeaderSummary()}
             </>
           }
@@ -793,5 +937,102 @@ const styles = StyleSheet.create({
     color: "#a4b0be",
     textAlign: "center",
     lineHeight: 22,
+  },
+  resetPasswordButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4ecca3",
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginBottom: 20,
+    gap: 8,
+  },
+
+  resetPasswordButtonText: {
+    color: "#1a1a2e",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+
+  resetModal: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#1a1a2e",
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "#4ecca340",
+  },
+
+  modalIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#4ecca315",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 14,
+  },
+
+  modalTitle: {
+    color: "#ffffff",
+    fontSize: 20,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  modalSubtitle: {
+    color: "#a4b0be",
+    fontSize: 13,
+    textAlign: "center",
+    marginTop: 7,
+    marginBottom: 20,
+  },
+
+  passwordInput: {
+    backgroundColor: "#ffffff10",
+    borderWidth: 1,
+    borderColor: "#ffffff20",
+    borderRadius: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    color: "#ffffff",
+    fontSize: 14,
+    marginBottom: 12,
+  },
+
+  confirmResetButton: {
+    backgroundColor: "#4ecca3",
+    paddingVertical: 14,
+    borderRadius: 11,
+    alignItems: "center",
+    marginTop: 5,
+  },
+
+  confirmResetText: {
+    color: "#1a1a2e",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  cancelResetButton: {
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+
+  cancelResetText: {
+    color: "#a4b0be",
+    fontWeight: "700",
+    fontSize: 14,
   },
 });

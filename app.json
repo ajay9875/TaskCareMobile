@@ -2,7 +2,7 @@
   "expo": {
     "name": "FitWisely",
     "slug": "TaskCareMobile",
-    "version": "1.2.3",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "taskcaremobile",
@@ -122,7 +122,7 @@
       "eas": {
         "projectId": "f10f38af-0647-45b5-9870-484ef77bd853"
       },
-      "updateDescription": "Rebranded to FitWisely! New fitness-first icon, team leaderboards (up to 10 teams), and battery optimization."
+      "updateDescription": "Added recaptcha and challenge funtionality to make sure a real human is logging in"
     },
     "runtimeVersion": {
       "policy": "appVersion"

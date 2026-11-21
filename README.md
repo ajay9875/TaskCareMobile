@@ -79,8 +79,8 @@ npx expo prebuild --platform android
 cd android
 .\gradlew generateCodegenArtifactsFromSchema
 cd ..
-eas build --platform android --profile preview
 eas build --platform ios --profile preview
+eas build --platform android --profile preview
 
 # 3. To push only new changes to the EAS which will be affecting in the user app by updating manually from downloaded app before
 

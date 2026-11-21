@@ -125,8 +125,12 @@ export default function MyTeamScreen() {
 
   const sortedTeams = useMemo(() => {
     return [...teams].sort((a, b) => {
-      if (a.is_admin !== b.is_admin) return a.is_admin ? -1 : 1;
-      return a.name.localeCompare(b.name);
+      // 1. Sort by admin status first (Admin teams go to the top)
+      if (a.is_admin && !b.is_admin) return -1;
+      if (!a.is_admin && b.is_admin) return 1;
+
+      // 2. If both are admin OR both are members, sort them alphabetically A-Z
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }, [teams]);
 
@@ -152,38 +156,38 @@ export default function MyTeamScreen() {
     return (team?.members ?? []).filter((m: any) => !!m.is_signed_in).length;
   }
 
-// Add these helper functions
-function allTeamsOnlineCount(): number {
-  const uniqueUsers = new Set();
-  teams.forEach(t => {
-    (t.members ?? []).forEach((m: any) => {
-      if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
+  // Add these helper functions
+  function allTeamsOnlineCount(): number {
+    const uniqueUsers = new Set();
+    teams.forEach((t) => {
+      (t.members ?? []).forEach((m: any) => {
+        if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
+      });
     });
-  });
-  return uniqueUsers.size;
-}
+    return uniqueUsers.size;
+  }
 
-function allTeamsMemberCount(): number {
-  const uniqueUsers = new Set();
+  function allTeamsMemberCount(): number {
+    const uniqueUsers = new Set();
 
-  teams.forEach((t) => {
-    (t.members ?? []).forEach((m: any) => {
-      uniqueUsers.add(m.user_id);
+    teams.forEach((t) => {
+      (t.members ?? []).forEach((m: any) => {
+        uniqueUsers.add(m.user_id);
+      });
     });
-  });
 
-  return uniqueUsers.size;
-}
+    return uniqueUsers.size;
+  }
 
-function allTeamsSignedInCount(): number {
-  const uniqueUsers = new Set();
-  teams.forEach(t => {
-    (t.members ?? []).forEach((m: any) => {
-      if (m.is_signed_in) uniqueUsers.add(m.user_id);
+  function allTeamsSignedInCount(): number {
+    const uniqueUsers = new Set();
+    teams.forEach((t) => {
+      (t.members ?? []).forEach((m: any) => {
+        if (m.is_signed_in) uniqueUsers.add(m.user_id);
+      });
     });
-  });
-  return uniqueUsers.size;
-}
+    return uniqueUsers.size;
+  }
 
   // Leaderboard sorting
   const leaderboard = useMemo(() => {
@@ -198,11 +202,19 @@ function allTeamsSignedInCount(): number {
   const rankFor = (steps: number) =>
     leaderboard.filter((m: any) => (m.steps_today ?? 0) > steps).length + 1;
 
-  const medalFor = (rank: number) => {
-    if (rank === 1) return "🥇";
-    if (rank === 2) return "🥈";
-    if (rank === 3) return "🥉";
-    return `#${rank}`;
+  const colorForUser = (userId: number) => {
+    const colors = [
+      "#4F46E5",
+      "#0284C7",
+      "#059669",
+      "#D97706",
+      "#DB2777",
+      "#7C3AED",
+      "#0891B2",
+      "#EA580C",
+    ];
+
+    return colors[Math.abs(Number(userId) || 0) % colors.length];
   };
 
   const handleCreate = async () => {
@@ -527,7 +539,7 @@ function allTeamsSignedInCount(): number {
             />
             <Text style={styles.teamStatValue}>
               {activeTeam
-                ? activeTeam.members?.length ?? 0
+                ? (activeTeam.members?.length ?? 0)
                 : allTeamsMemberCount()}
             </Text>
             <Text style={styles.teamStatLabel}>
@@ -544,18 +556,20 @@ function allTeamsSignedInCount(): number {
               size={18}
               color="#16A34A"
             />
-          <Text style={styles.teamStatValue}>
-            {activeTeam ? teamOnlineCount(activeTeam) : allTeamsOnlineCount()}
-          </Text>
-          <Text style={styles.teamStatLabel}>
-            {activeTeam ? "Online" : "Total Online"}
-          </Text>
+            <Text style={styles.teamStatValue}>
+              {activeTeam ? teamOnlineCount(activeTeam) : allTeamsOnlineCount()}
+            </Text>
+            <Text style={styles.teamStatLabel}>
+              {activeTeam ? "Online" : "Total Online"}
+            </Text>
           </View>
           <View style={styles.teamStatDivider} />
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons name="login" size={18} color="#0284C7" />
             <Text style={styles.teamStatValue}>
-              {activeTeam ? teamSignedInCount(activeTeam) : allTeamsSignedInCount()}
+              {activeTeam
+                ? teamSignedInCount(activeTeam)
+                : allTeamsSignedInCount()}
             </Text>
             <Text style={styles.teamStatLabel}>
               {activeTeam ? "Signed In" : "Total Signed In"}
@@ -757,6 +771,24 @@ function allTeamsSignedInCount(): number {
               const isMe = item.user_id === activeTeam.current_user_id;
               const rank = rankFor(item.steps_today ?? 0);
 
+              const openMemberHistory = () => {
+                if (!activeTeam.is_admin && !isMe) {
+                  Alert.alert(
+                    "Private",
+                    "Detailed history is only visible to the team admin.",
+                  );
+                  return;
+                }
+
+                router.push({
+                  pathname: "/teams/member/[id]",
+                  params: {
+                    id: item.user_id,
+                    team_id: activeTeam.id,
+                  },
+                });
+              };
+
               return (
                 <View
                   key={item.user_id}
@@ -765,40 +797,51 @@ function allTeamsSignedInCount(): number {
                   <TouchableOpacity
                     style={styles.rowBody}
                     activeOpacity={0.7}
-                    onPress={() => {
-                      const isSelf =
-                        item.user_id === activeTeam.current_user_id;
-                      if (!activeTeam.is_admin && !isSelf) {
-                        Alert.alert(
-                          "Private",
-                          "Detailed history is only visible to the team admin.",
-                        );
-                        return;
-                      }
-                      router.push({
-                        pathname: "/teams/member/[id]",
-                        params: {
-                          id: item.user_id,
-                          team_id: activeTeam.id,
-                        },
-                      });
-                    }}
+                    onPress={openMemberHistory}
                   >
-                    <View style={styles.avatar}>
+                    {/* ✅ 1. DYNAMIC AVATAR COLOR */}
+                    <View
+                      style={[
+                        styles.avatar,
+                        { backgroundColor: colorForUser(item.user_id) },
+                      ]}
+                    >
                       <Text style={styles.avatarText}>
                         {item.name?.charAt(0)?.toUpperCase() || "?"}
                       </Text>
                     </View>
+
                     <View style={styles.rowText}>
                       <Text style={styles.memberName}>
                         {item.name} {item.role === "admin" ? "👑" : ""}{" "}
                         {isMe ? "(you)" : ""}
                       </Text>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 }}>
+
+                      {/* ✅ 2. MEDAL INLINE WITH STATUS */}
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: 8,
+                          marginTop: 2,
+                        }}
+                      >
+                        {/* Ranking Badge */}
+                        <View
+                          style={[
+                            styles.rankBadge,
+                            rank === 1 && styles.firstRankBadge,
+                            rank === 2 && styles.secondRankBadge,
+                            rank === 3 && styles.thirdRankBadge,
+                          ]}
+                        >
+                          <Text style={styles.rankText}>#{rank}</Text>
+                        </View>
+
                         <Text style={styles.memberStatus}>
                           {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
                         </Text>
-                        
+
                         <Text style={styles.memberStatus}>
                           {isOnlineMember(item) ? "🟢 Online" : "⚪ Offline"}
                         </Text>
@@ -807,7 +850,6 @@ function allTeamsSignedInCount(): number {
                   </TouchableOpacity>
 
                   <View style={styles.stepsWrap}>
-                    <Text style={styles.rankTextTop}>{medalFor(rank)}</Text>
                     <Text style={styles.stepsNumber}>
                       {(item.steps_today ?? 0).toLocaleString()}
                     </Text>
@@ -827,7 +869,17 @@ function allTeamsSignedInCount(): number {
                     </TouchableOpacity>
                   )}
 
-                  <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
+                  <TouchableOpacity
+                    onPress={openMemberHistory}
+                    activeOpacity={0.6}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name="chevron-forward"
+                      size={22}
+                      color="#94A3B8"
+                    />
+                  </TouchableOpacity>
                 </View>
               );
             })}
@@ -1212,12 +1264,40 @@ const styles = StyleSheet.create({
   },
   rowMe: { borderColor: "#4F46E5", borderWidth: 2 },
   rankBadge: {
-    width: 38,
+    minWidth: 30,
+    height: 20,
+    paddingHorizontal: 7,
+    borderRadius: 8,
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 6,
+    flexShrink: 0,
   },
-  rankText: { fontSize: 16, fontWeight: "800", color: "#475569" },
+
+  firstRankBadge: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#93C5FD",
+  },
+
+  secondRankBadge: {
+    backgroundColor: "#EDE9FE",
+    borderColor: "#C4B5FD",
+  },
+
+  thirdRankBadge: {
+    backgroundColor: "#CFFAFE",
+    borderColor: "#67E8F9",
+  },
+
+  rankText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: "#3730A3",
+    textAlign: "center",
+    includeFontPadding: false,
+  },
   rowBody: { flex: 1, flexDirection: "row", alignItems: "center" },
   avatar: {
     width: 46,

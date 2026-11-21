@@ -267,9 +267,9 @@ export default function TeamMemberHistory() {
               {summary?.combined_steps?.display ?? "—"}
             </Text>
           </View>
-          
+
           <View style={styles.stripMetricDivider} />
-          
+
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="map-marker-distance"
@@ -284,7 +284,7 @@ export default function TeamMemberHistory() {
           </View>
 
           <View style={styles.stripMetricDivider} />
-          
+
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="calendar-check"

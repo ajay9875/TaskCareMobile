@@ -5,9 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Modal,
+  RefreshControl,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -54,8 +55,8 @@ type AdminTeam = {
   created_by: string;
   created_at_label: string;
   member_count: number;
-  online_member_count?: number;       // NEW
-  signed_in_member_count?: number;    // NEW
+  online_member_count?: number; // NEW
+  signed_in_member_count?: number; // NEW
 };
 
 // ── Status pill (mirrors app/teams/member/[id].tsx) ──
@@ -97,9 +98,7 @@ function StatusPill({
 
       {/* signed in / out pill */}
       <View style={styles.statusPill}>
-        <View
-          style={[styles.statusDot, { backgroundColor: signedInColor }]}
-        />
+        <View style={[styles.statusDot, { backgroundColor: signedInColor }]} />
         <Text
           style={[styles.statusPillText, { color: signedInColor }]}
           numberOfLines={1}
@@ -140,15 +139,18 @@ export default function AdminPanel() {
   } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-    // ✅ NEW: Admin Stats calculation
+  // ✅ NEW: Admin Stats calculation
   const adminStats = useMemo(() => {
     const totalUsers = users.length;
     const onlineUsers = users.filter((u) => u.state === "online").length;
     const totalTeams = teams.length;
-    
+
     // Count unique members across all teams
     // (Assuming you might not have a direct 'members' array in AdminTeam, we use member_count)
-    const totalMemberships = teams.reduce((sum, t) => sum + (t.member_count || 0), 0);
+    const totalMemberships = teams.reduce(
+      (sum, t) => sum + (t.member_count || 0),
+      0,
+    );
 
     return {
       totalUsers,
@@ -316,236 +318,390 @@ export default function AdminPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isLoggedIn]);
 
-  if (loading) {
-    return <ActivityIndicator size="large" style={{ marginTop: 50 }} />;
-  }
-
   // ─── PIN SCREEN ───
   if (!isVerified) {
     const isPinComplete = pin.length === 6;
 
     return (
       <SafeAreaView style={styles.container}>
-        <View style={{ padding: 20, marginTop: 50 }}>
-          <MaterialCommunityIcons
-            name="shield-lock"
-            size={60}
-            color="#7C3AED"
-            style={{ alignSelf: "center" }}
-          />
-          <Text style={[styles.headerTitle, { textAlign: "center" }]}>
-            Super Admin Access
-          </Text>
-          <Text
-            style={{ textAlign: "center", color: "#64748B", marginBottom: 20 }}
-          >
-            Enter 6-digit PIN to unlock Teams and User Management
-          </Text>
-
-          {/* ── PIN Input with Visibility Toggle ── */}
-          <View style={styles.pinInputWrapper}>
-            <TextInput
-              style={styles.pinInput}
-              placeholder="••••••"
-              keyboardType="number-pad"
-              secureTextEntry={!showPin}
-              maxLength={6}
-              value={pin}
-              onChangeText={setPin}
-              editable={!isVerifying}
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 40 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={fetchData}
+              tintColor="#4F46E5"
+              colors={["#4F46E5"]}
             />
-            <TouchableOpacity
-              style={styles.eyeIcon}
-              onPress={() => setShowPin(!showPin)}
+          }
+        >
+          <View style={{ padding: 20, marginTop: 50 }}>
+            <MaterialCommunityIcons
+              name="shield-lock"
+              size={60}
+              color="#7C3AED"
+              style={{ alignSelf: "center" }}
+            />
+            <Text style={[styles.headerTitle, { textAlign: "center" }]}>
+              Super Admin Access
+            </Text>
+            <Text
+              style={{
+                textAlign: "center",
+                color: "#64748B",
+                marginBottom: 20,
+              }}
             >
-              <Ionicons
-                name={showPin ? "eye-off-outline" : "eye-outline"}
-                size={24}
-                color="#64748B"
+              Enter 6-digit PIN to unlock Teams and User Management
+            </Text>
+
+            {/* ── PIN Input with Visibility Toggle ── */}
+            <View style={styles.pinInputWrapper}>
+              <TextInput
+                style={styles.pinInput}
+                placeholder="••••••"
+                keyboardType="number-pad"
+                secureTextEntry={!showPin}
+                maxLength={6}
+                value={pin}
+                onChangeText={setPin}
+                editable={!isVerifying}
               />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPin(!showPin)}
+              >
+                <Ionicons
+                  name={showPin ? "eye-off-outline" : "eye-outline"}
+                  size={24}
+                  color="#64748B"
+                />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={verifyPin}
+              disabled={!isPinComplete || isVerifying}
+              style={{
+                backgroundColor:
+                  !isPinComplete || isVerifying ? "#D1D5DB" : "#7C3AED",
+                padding: 15,
+                borderRadius: 10,
+                marginTop: 20,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {isVerifying ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text
+                  style={{
+                    color: "#fff",
+                    textAlign: "center",
+                    fontWeight: "bold",
+                    fontSize: 16,
+                  }}
+                >
+                  Unlock
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            onPress={verifyPin}
-            disabled={!isPinComplete || isVerifying}
-            style={{
-              backgroundColor:
-                !isPinComplete || isVerifying ? "#D1D5DB" : "#7C3AED",
-              padding: 15,
-              borderRadius: 10,
-              marginTop: 20,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            {isVerifying ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text
-                style={{
-                  color: "#fff",
-                  textAlign: "center",
-                  fontWeight: "bold",
-                  fontSize: 16,
-                }}
-              >
-                Unlock
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
+    );
+  }
+
+  // Show full screen spinner ONLY on initial load (when lists are empty)
+  if (loading && users.length === 0 && teams.length === 0) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#F8FAFC",
+        }}
+      >
+        <ActivityIndicator size="large" color="#4F46E5" />
+      </View>
     );
   }
 
   // ─── MAIN ADMIN DASHBOARD ───
   return (
     <SafeAreaView style={styles.container}>
-      {/* Tab Selector */}
-      <View
-        style={{
-          flexDirection: "row",
-          marginHorizontal: 16,
-          marginTop: 10,
-          backgroundColor: "#E2E8F0",
-          borderRadius: 10,
-          padding: 4,
-        }}
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 40 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading} // 👈 Ties to the fetchData loading state
+            onRefresh={fetchData} // 👈 Triggers the fetch
+            tintColor="#4F46E5" // 👈 Standard iOS spinner color
+            colors={["#4F46E5"]} // 👈 Standard Android spinner color
+          />
+        }
       >
-        <TouchableOpacity
+        {/* Tab Selector */}
+        <View
           style={{
-            flex: 1,
-            padding: 10,
-            alignItems: "center",
-            backgroundColor: activeTab === "users" ? "#fff" : "transparent",
-            borderRadius: 8,
+            flexDirection: "row",
+            marginHorizontal: 16,
+            marginTop: 10,
+            backgroundColor: "#E2E8F0",
+            borderRadius: 10,
+            padding: 4,
           }}
-          onPress={() => setActiveTab("users")}
         >
-
-          <Text
+          <TouchableOpacity
             style={{
-              fontWeight: "bold",
-              color: activeTab === "users" ? "#0F172A" : "#64748B",
+              flex: 1,
+              padding: 10,
+              alignItems: "center",
+              backgroundColor: activeTab === "users" ? "#fff" : "transparent",
+              borderRadius: 8,
             }}
+            onPress={() => setActiveTab("users")}
           >
-            Users ({users.length})
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={{
-            flex: 1,
-            padding: 10,
-            alignItems: "center",
-            backgroundColor: activeTab === "teams" ? "#fff" : "transparent",
-            borderRadius: 8,
-          }}
-          onPress={() => setActiveTab("teams")}
-        >
-          <Text
+            <Text
+              style={{
+                fontWeight: "bold",
+                color: activeTab === "users" ? "#0F172A" : "#64748B",
+              }}
+            >
+              Users ({users.length})
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
             style={{
-              fontWeight: "bold",
-              color: activeTab === "teams" ? "#0F172A" : "#64748B",
+              flex: 1,
+              padding: 10,
+              alignItems: "center",
+              backgroundColor: activeTab === "teams" ? "#fff" : "transparent",
+              borderRadius: 8,
             }}
+            onPress={() => setActiveTab("teams")}
           >
-            Teams ({teams.length})
-          </Text>
-        </TouchableOpacity>
-      </View>
+            <Text
+              style={{
+                fontWeight: "bold",
+                color: activeTab === "teams" ? "#0F172A" : "#64748B",
+              }}
+            >
+              Teams ({teams.length})
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* ✅ NEW: Admin Stats Strip */}
-      <View style={styles.statsRow}>
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="account-group" size={20} color="#4F46E5" />
-          <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
-          <Text style={styles.statLabel}>Users</Text>
+        {/* ✅ Admin Stats Strip */}
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <MaterialCommunityIcons
+              name="account-group"
+              size={20}
+              color="#4F46E5"
+            />
+            <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
+            <Text style={styles.statLabel}>Users</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <MaterialCommunityIcons
+              name="check-circle"
+              size={20}
+              color="#16A34A"
+            />
+            <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
+            <Text style={styles.statLabel}>Online</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <MaterialCommunityIcons
+              name="account-multiple"
+              size={20}
+              color="#D97706"
+            />
+            <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
+            <Text style={styles.statLabel}>Teams</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
+            <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
+            <Text style={styles.statLabel}>Members</Text>
+          </View>
         </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="check-circle" size={20} color="#16A34A" />
-          <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
-          <Text style={styles.statLabel}>Online</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="account-multiple" size={20} color="#D97706" />
-          <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
-          <Text style={styles.statLabel}>Teams</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
-          <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
-          <Text style={styles.statLabel}>Members</Text>
-        </View>
-      </View>
 
-      {activeTab === "users" ? (
-        <FlatList
-          data={users}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ padding: 16 }}
-          ListEmptyComponent={
+        {/* ── LIST SECTION ── */}
+        <View style={{ padding: 16 }}>
+          {activeTab === "users" ? (
+            users.length === 0 ? (
+              <View style={styles.emptyBlock}>
+                <MaterialCommunityIcons
+                  name="account-off-outline"
+                  size={42}
+                  color="#CBD5E1"
+                />
+                <Text style={styles.emptyText}>No users yet</Text>
+              </View>
+            ) : (
+              users.map((item) => {
+                const isDeleting = deletingUserId === item.id;
+                const isSelf = user?.id === item.id;
+                return (
+                  <View key={String(item.id)} style={styles.row}>
+                    <TouchableOpacity
+                      style={styles.rowBody}
+                      activeOpacity={0.7}
+                      disabled={isDeleting}
+                      onPress={() => router.push(`/admin/user/${item.id}`)}
+                    >
+                      <View
+                        style={[
+                          styles.avatar,
+                          { backgroundColor: colorForUser(item.id) },
+                        ]}
+                      >
+                        <Text style={styles.avatarText}>
+                          {item.name?.charAt(0)?.toUpperCase() ?? "?"}
+                        </Text>
+                      </View>
+                      <View style={styles.rowText}>
+                        <Text style={styles.rowName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        <Text style={styles.rowEmail} numberOfLines={1}>
+                          {item.email}
+                        </Text>
+                        <Text style={styles.rowMeta} numberOfLines={1}>
+                          Created {item.created_at_label ?? "—"} • ID #{item.id}
+                        </Text>
+                        <StatusPill
+                          state={item.state}
+                          label={item.label}
+                          isSignedIn={item.is_signed_in}
+                        />
+                      </View>
+                    </TouchableOpacity>
+
+                    <View style={styles.actionsWrap}>
+                      {!isSelf && (
+                        <TouchableOpacity
+                          style={styles.trashBtn}
+                          disabled={isDeleting}
+                          onPress={() => openDeleteModal("user", item)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          {isDeleting ? (
+                            <ActivityIndicator size="small" color="#DC2626" />
+                          ) : (
+                            <Ionicons
+                              name="trash-outline"
+                              size={20}
+                              color="#DC2626"
+                            />
+                          )}
+                        </TouchableOpacity>
+                      )}
+                      <Ionicons
+                        name="chevron-forward"
+                        size={22}
+                        color="#94A3B8"
+                      />
+                    </View>
+                  </View>
+                );
+              })
+            )
+          ) : teams.length === 0 ? (
             <View style={styles.emptyBlock}>
               <MaterialCommunityIcons
-                name="account-off-outline"
+                name="account-group-outline"
                 size={42}
                 color="#CBD5E1"
               />
-              <Text style={styles.emptyText}>No users yet</Text>
+              <Text style={styles.emptyText}>No teams yet</Text>
             </View>
-          }
-          renderItem={({ item }) => {
-            const isDeleting = deletingUserId === item.id;
-            // inside renderItem:
-            const isSelf = user?.id === item.id;
-            return (
-              <View style={styles.row}>
-                {/* ── Tappable main body → opens user detail ── */}
-                <TouchableOpacity
-                  style={styles.rowBody}
-                  activeOpacity={0.7}
-                  disabled={isDeleting}
-                  onPress={() => router.push(`/admin/user/${item.id}`)}
-                >
-                  <View
-                    style={[
-                      styles.avatar,
-                      { backgroundColor: colorForUser(item.id) },
-                    ]}
+          ) : (
+            teams.map((item) => {
+              const isDeleting = deletingTeamId === item.id;
+              return (
+                <View key={String(item.id)} style={styles.row}>
+                  <TouchableOpacity
+                    style={styles.rowBody}
+                    activeOpacity={0.7}
+                    disabled={isDeleting}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/admin/team/[id]",
+                        params: { id: item.id },
+                      })
+                    }
                   >
-                    <Text style={styles.avatarText}>
-                      {item.name?.charAt(0)?.toUpperCase() ?? "?"}
-                    </Text>
-                  </View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.rowEmail} numberOfLines={1}>
-                      {item.email}
-                    </Text>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
-                      Created {item.created_at_label ?? "—"} • ID #{item.id}
-                    </Text>
-                    {/* ✅ NEW: status pills */}
-                    <StatusPill
-                      state={item.state}
-                      label={item.label}
-                      isSignedIn={item.is_signed_in}
-                    />
-                  </View>
-                </TouchableOpacity>
+                    <View
+                      style={[styles.avatar, { backgroundColor: "#4F46E5" }]}
+                    >
+                      <MaterialCommunityIcons
+                        name="account-group"
+                        size={24}
+                        color="#fff"
+                      />
+                    </View>
+                    <View style={styles.rowText}>
+                      <Text style={styles.rowName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      <Text style={styles.rowEmail} numberOfLines={1}>
+                        Code: {item.join_code}
+                      </Text>
+                      <Text style={styles.rowMeta} numberOfLines={1}>
+                        Created {item.created_at_label} • {item.member_count}{" "}
+                        members
+                      </Text>
+                      <View style={styles.pillRow}>
+                        <View style={styles.statusPill}>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              { backgroundColor: "#16A34A" },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              { color: "#16A34A" },
+                            ]}
+                          >
+                            {item.online_member_count ?? 0} online
+                          </Text>
+                        </View>
+                        <View style={styles.statusPill}>
+                          <View
+                            style={[
+                              styles.statusDot,
+                              { backgroundColor: "#0284C7" },
+                            ]}
+                          />
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              { color: "#0284C7" },
+                            ]}
+                          >
+                            {item.signed_in_member_count ?? 0} signed in
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
 
-                {/* ── Right-side actions: trash + chevron ── */}
-                <View style={styles.actionsWrap}>
-                  {!isSelf && (
+                  <View style={styles.actionsWrap}>
                     <TouchableOpacity
                       style={styles.trashBtn}
                       disabled={isDeleting}
-                      onPress={() => openDeleteModal("user", item)}
+                      onPress={() => openDeleteModal("team", item)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       {isDeleting ? (
@@ -558,108 +714,21 @@ export default function AdminPanel() {
                         />
                       )}
                     </TouchableOpacity>
-                  )}
-                  <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
-                </View>
-              </View>
-            );
-          }}
-        />
-      ) : (
-        <FlatList
-          data={teams}
-          keyExtractor={(item) => String(item.id)}
-          contentContainerStyle={{ padding: 16 }}
-          ListEmptyComponent={
-            <View style={styles.emptyBlock}>
-              <MaterialCommunityIcons
-                name="account-group-outline"
-                size={42}
-                color="#CBD5E1"
-              />
-              <Text style={styles.emptyText}>No teams yet</Text>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const isDeleting = deletingTeamId === item.id;
-            return (
-              <View style={styles.row}>
-                {/* ── Tappable main body → opens team detail ── */}
-                <TouchableOpacity
-                  style={styles.rowBody}
-                  activeOpacity={0.7}
-                  disabled={isDeleting}
-                  onPress={() =>
-                    router.push({
-                      pathname: "/admin/team/[id]",
-                      params: { id: item.id },
-                    })
-                  }
-                >
-                  <View style={[styles.avatar, { backgroundColor: "#4F46E5" }]}>
-                    <MaterialCommunityIcons
-                      name="account-group"
-                      size={24}
-                      color="#fff"
+                    <Ionicons
+                      name="chevron-forward"
+                      size={22}
+                      color="#94A3B8"
                     />
                   </View>
-                  <View style={styles.rowText}>
-                    <Text style={styles.rowName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.rowEmail} numberOfLines={1}>
-                      Code: {item.join_code}
-                    </Text>
-                    <Text style={styles.rowMeta} numberOfLines={1}>
-                      Created {item.created_at_label} • {item.member_count}{" "}
-                      members
-                    </Text>
-                    {/* ✅ NEW: aggregate pills */}
-                    <View style={styles.pillRow}>
-                      <View style={styles.statusPill}>
-                        <View style={[styles.statusDot, { backgroundColor: "#16A34A" }]} />
-                        <Text style={[styles.statusPillText, { color: "#16A34A" }]}>
-                          {item.online_member_count ?? 0} online
-                        </Text>
-                      </View>
-                      <View style={styles.statusPill}>
-                        <View style={[styles.statusDot, { backgroundColor: "#0284C7" }]} />
-                        <Text style={[styles.statusPillText, { color: "#0284C7" }]}>
-                          {item.signed_in_member_count ?? 0} signed in
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-
-                {/* ── Right-side actions: trash + chevron ── */}
-                <View style={styles.actionsWrap}>
-                  <TouchableOpacity
-                    style={styles.trashBtn}
-                    disabled={isDeleting}
-                    onPress={() => openDeleteModal("team", item)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  >
-                    {isDeleting ? (
-                      <ActivityIndicator size="small" color="#DC2626" />
-                    ) : (
-                      <Ionicons
-                        name="trash-outline"
-                        size={20}
-                        color="#DC2626"
-                      />
-                    )}
-                  </TouchableOpacity>
-                  <Ionicons name="chevron-forward" size={22} color="#94A3B8" />
                 </View>
-              </View>
-            );
-          }}
-        />
-      )}
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
 
       {/* ─────────────────────────────────────────────────────────────
-          DELETE CONFIRMATION MODAL (REQUIRES TYPING "DELETE")
+          DELETE CONFIRMATION MODAL
       ───────────────────────────────────────────────────────────── */}
       <Modal
         visible={deleteModalVisible}
@@ -679,7 +748,6 @@ export default function AdminPanel() {
                 Delete {deleteTarget?.type === "user" ? "User" : "Team"}?
               </Text>
             </View>
-
             <Text style={styles.modalBody}>
               You are about to permanently delete{" "}
               <Text style={{ fontWeight: "700", color: "#0F172A" }}>
@@ -698,7 +766,6 @@ export default function AdminPanel() {
                 be removed.
               </Text>
             )}
-
             <Text style={styles.modalInstruction}>
               Please type{" "}
               <Text
@@ -712,7 +779,6 @@ export default function AdminPanel() {
               </Text>{" "}
               to confirm.
             </Text>
-
             <TextInput
               style={styles.deleteInput}
               placeholder="DELETE"
@@ -722,7 +788,6 @@ export default function AdminPanel() {
               autoCorrect={false}
               placeholderTextColor="#94A3B8"
             />
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalBtnCancel}
@@ -735,7 +800,7 @@ export default function AdminPanel() {
                   styles.modalBtnDelete,
                   deleteConfirmText !== "DELETE" && {
                     backgroundColor: "#FCA5A5",
-                  }, // disabled style
+                  },
                 ]}
                 disabled={deleteConfirmText !== "DELETE"}
                 onPress={executeDelete}
@@ -753,33 +818,33 @@ export default function AdminPanel() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
   pillRow: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  gap: 6,
-  marginTop: 6,
-},
-statusPill: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#F1F5F9",
-  paddingHorizontal: 8,
-  paddingVertical: 3,
-  borderRadius: 10,
-  borderWidth: 1,
-  borderColor: "#E2E8F0",
-  gap: 5,
-  maxWidth: "100%",
-},
-statusDot: {
-  width: 6,
-  height: 6,
-  borderRadius: 3,
-},
-statusPillText: {
-  fontSize: 11,
-  fontWeight: "700",
-  letterSpacing: 0.2,
-},
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  statusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F1F5F9",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    gap: 5,
+    maxWidth: "100%",
+  },
+  statusDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.2,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: "800",
@@ -787,7 +852,7 @@ statusPillText: {
     marginTop: 8,
   },
 
-    // ✅ NEW: Stats Strip Styles
+  // ✅ NEW: Stats Strip Styles
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
