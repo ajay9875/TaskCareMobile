@@ -55,7 +55,7 @@ npx expo start --android --go
 npx expo start --go
 npx expo prebuild --clean --platform android
 npx expo run:android | npx expo prebuild --platform android
-npx expo start --android | npx expo start --clear | npx expo start --go | npx expo start --go --clear
+npx expo start --android | npx expo start --clear | npx expo start --go
 
 # Press s to switch for Expo GO from Development and Press Enter after that press a to open app in the Android studio
 

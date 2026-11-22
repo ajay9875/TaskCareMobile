@@ -16,9 +16,30 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useAuth } from "../../context/AuthContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const MAX_TEAMS = 10;
+
+// 🔥 Helper to check for Team Admin status
+function isTeamAdmin(member: any): boolean {
+  const role = (member?.role ?? "").toLowerCase();
+  return (
+    !!member?.is_admin ||
+    !!member?.is_team_admin ||
+    !!member?.team_admin ||
+    role === "admin" ||
+    role === "team_admin"
+  );
+}
+
+// 🏅 Medal emoji helper (rank 1–3 get a medal, others just "#N")
+function rankBadge(rank: number) {
+  if (rank === 1) return { text: "🥇 #1", style: styles.firstRank };
+  if (rank === 2) return { text: "🥈 #2", style: styles.secondRank };
+  if (rank === 3) return { text: "🥉 #3", style: styles.thirdRank };
+  return { text: `#${rank}`, style: styles.otherRank };
+}
 
 export default function MyTeamScreen() {
   const [loading, setLoading] = useState(true);
@@ -32,6 +53,8 @@ export default function MyTeamScreen() {
   // ✅ NEW: team count states
   const [teamCount, setTeamCount] = useState(0);
   const [adminTeamCount, setAdminTeamCount] = useState(0);
+
+  const { user: currentUser } = useAuth();
 
   // ✅ NEW: 60s ticker — forces online pills to re-evaluate
   const [, setTick] = useState(0);
@@ -125,11 +148,8 @@ export default function MyTeamScreen() {
 
   const sortedTeams = useMemo(() => {
     return [...teams].sort((a, b) => {
-      // 1. Sort by admin status first (Admin teams go to the top)
       if (a.is_admin && !b.is_admin) return -1;
       if (!a.is_admin && b.is_admin) return 1;
-
-      // 2. If both are admin OR both are members, sort them alphabetically A-Z
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }, [teams]);
@@ -139,8 +159,6 @@ export default function MyTeamScreen() {
 
   function isOnlineMember(m: any): boolean {
     if (!m?.last_seen) return false;
-    // Backend serializes naive IST datetimes; attach the offset so Date.parse
-    // treats it as absolute time rather than device-local time.
     const raw: string = m.last_seen;
     const withTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}+05:30`;
     const t = Date.parse(withTz);
@@ -156,7 +174,6 @@ export default function MyTeamScreen() {
     return (team?.members ?? []).filter((m: any) => !!m.is_signed_in).length;
   }
 
-  // Add these helper functions
   function allTeamsOnlineCount(): number {
     const uniqueUsers = new Set();
     teams.forEach((t) => {
@@ -169,13 +186,11 @@ export default function MyTeamScreen() {
 
   function allTeamsMemberCount(): number {
     const uniqueUsers = new Set();
-
     teams.forEach((t) => {
       (t.members ?? []).forEach((m: any) => {
         uniqueUsers.add(m.user_id);
       });
     });
-
     return uniqueUsers.size;
   }
 
@@ -189,7 +204,34 @@ export default function MyTeamScreen() {
     return uniqueUsers.size;
   }
 
-  // Leaderboard sorting
+  // 🔥 RANK MAP — Dense ranking (Same logic as admin.tsx)
+  const rankMap = useMemo(() => {
+    const map = new Map<number, number>();
+    if (!activeTeam?.members) return map;
+
+    // Sort by steps descending
+    const bySteps = [...activeTeam.members].sort(
+      (a: any, b: any) => (b.steps_today ?? 0) - (a.steps_today ?? 0),
+    );
+
+    let currentRank = 0;
+    let previousSteps: number | null = null;
+
+    bySteps.forEach((m: any, index: number) => {
+      const steps = m.steps_today ?? 0;
+
+      if (previousSteps === null || steps !== previousSteps) {
+        currentRank = index + 1;
+      }
+
+      map.set(m.user_id, currentRank);
+      previousSteps = steps;
+    });
+
+    return map;
+  }, [activeTeam]);
+
+  // Leaderboard sorting (Steps DESC, ID ASC for tie-breaker)
   const leaderboard = useMemo(() => {
     if (!activeTeam?.members) return [];
     return [...activeTeam.members].sort((a: any, b: any) => {
@@ -198,9 +240,6 @@ export default function MyTeamScreen() {
       return a.user_id - b.user_id;
     });
   }, [activeTeam]);
-
-  const rankFor = (steps: number) =>
-    leaderboard.filter((m: any) => (m.steps_today ?? 0) > steps).length + 1;
 
   const colorForUser = (userId: number) => {
     const colors = [
@@ -213,13 +252,11 @@ export default function MyTeamScreen() {
       "#0891B2",
       "#EA580C",
     ];
-
     return colors[Math.abs(Number(userId) || 0) % colors.length];
   };
 
   const handleCreate = async () => {
     if (!teamName) return Alert.alert("Error", "Enter a team name");
-
     try {
       const res = await fetch(`${API_BASE}/teams/create`, {
         method: "POST",
@@ -228,7 +265,6 @@ export default function MyTeamScreen() {
         body: JSON.stringify({ name: teamName }),
       });
       const data = await res.json();
-
       if (!res.ok) {
         Alert.alert("Error", data?.error || "Failed to create team");
         return;
@@ -250,7 +286,6 @@ export default function MyTeamScreen() {
         body: JSON.stringify({ code: joinCode }),
       });
       const data = await res.json();
-
       if (!res.ok) {
         Alert.alert("Error", data?.error || "Failed to join team");
         return;
@@ -271,7 +306,6 @@ export default function MyTeamScreen() {
       `👇 Tap below to join automatically\n${joinLink}\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n\n` +
       `Or join manually:\n1. Open FitWisely\n2. Tap the "Teams" tab\n3. Enter the code above in "Join a Team"`;
-
     Share.share({ message });
   };
 
@@ -297,7 +331,6 @@ export default function MyTeamScreen() {
         body: JSON.stringify({ name: trimmed, team_id: activeTeam?.id }),
       });
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         Alert.alert("Error", data?.error || "Failed to rename team");
         return;
@@ -331,7 +364,6 @@ export default function MyTeamScreen() {
         },
       );
       const data = await res.json();
-
       if (res.ok) {
         Alert.alert("Removed", `${memberToDelete.name} removed.`);
         fetchTeams();
@@ -360,7 +392,6 @@ export default function MyTeamScreen() {
         },
       );
       const data = await res.json().catch(() => ({}));
-
       if (!res.ok) {
         Alert.alert("Error", data?.error || "Failed to delete team");
         return;
@@ -768,8 +799,13 @@ export default function MyTeamScreen() {
 
           <View style={{ paddingBottom: 20 }}>
             {leaderboard.map((item: any) => {
-              const isMe = item.user_id === activeTeam.current_user_id;
-              const rank = rankFor(item.steps_today ?? 0);
+              const isMe =
+                Number(item.user_id) === Number(activeTeam.current_user_id);
+
+              // 🔥 Pull rank from rankMap and generate badge
+              const rank = rankMap.get(item.user_id) ?? 0;
+              const badge = rank > 0 ? rankBadge(rank) : null;
+              const isAdmin = isTeamAdmin(item);
 
               const openMemberHistory = () => {
                 if (!activeTeam.is_admin && !isMe) {
@@ -799,7 +835,6 @@ export default function MyTeamScreen() {
                     activeOpacity={0.7}
                     onPress={openMemberHistory}
                   >
-                    {/* ✅ 1. DYNAMIC AVATAR COLOR */}
                     <View
                       style={[
                         styles.avatar,
@@ -812,31 +847,46 @@ export default function MyTeamScreen() {
                     </View>
 
                     <View style={styles.rowText}>
-                      <Text style={styles.memberName}>
-                        {item.name} {item.role === "admin" ? "👑" : ""}{" "}
-                        {isMe ? "(you)" : ""}
-                      </Text>
+                      <View style={styles.nameRow}>
+                        <Text style={styles.memberName} numberOfLines={1}>
+                          {item.name}
+                        </Text>
 
-                      {/* ✅ 2. MEDAL INLINE WITH STATUS */}
+                        {isAdmin && (
+                          <View style={styles.adminLabel}>
+                            <MaterialCommunityIcons
+                              name="crown"
+                              size={13}
+                              color="#D97706"
+                            />
+                            <Text style={styles.adminLabelText}>Admin</Text>
+                          </View>
+                        )}
+
+                        {isMe && (
+                          <View style={styles.youLabel}>
+                            <Text style={styles.youLabelText}>You</Text>
+                          </View>
+                        )}
+                      </View>
+
                       <View
                         style={{
                           flexDirection: "row",
                           alignItems: "center",
                           gap: 8,
-                          marginTop: 2,
+                          marginTop: 4,
+                          flexWrap: "wrap",
                         }}
                       >
-                        {/* Ranking Badge */}
-                        <View
-                          style={[
-                            styles.rankBadge,
-                            rank === 1 && styles.firstRankBadge,
-                            rank === 2 && styles.secondRankBadge,
-                            rank === 3 && styles.thirdRankBadge,
-                          ]}
-                        >
-                          <Text style={styles.rankText}>#{rank}</Text>
-                        </View>
+                        {/* 🏅 RANK BADGE — Matches admin.tsx EXACTLY */}
+                        {badge && (
+                          <View style={[styles.userRankBadge, badge.style]}>
+                            <Text style={styles.userRankText}>
+                              {badge.text}
+                            </Text>
+                          </View>
+                        )}
 
                         <Text style={styles.memberStatus}>
                           {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
@@ -1082,6 +1132,68 @@ export default function MyTeamScreen() {
 }
 
 const styles = StyleSheet.create({
+  // 🔥 EXACT RANK STYLES FROM ADMIN.TSX
+  userRankBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  firstRank: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#93C5FD",
+  },
+  secondRank: {
+    backgroundColor: "#EDE9FE",
+    borderColor: "#C4B5FD",
+  },
+  thirdRank: {
+    backgroundColor: "#CFFAFE",
+    borderColor: "#67E8F9",
+  },
+  otherRank: {
+    backgroundColor: "#EEF2FF",
+    borderColor: "#C7D2FE",
+  },
+  userRankText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#3730A3",
+  },
+
+  // 🔥 EXACT BADGE STYLES FROM ADMIN TEAM FILE
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  adminLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  adminLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#92400E",
+  },
+  youLabel: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  youLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+
   // Per-team status pills (in the "Your Teams" list)
   teamPillRow: {
     flexDirection: "row",
@@ -1263,41 +1375,6 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
   },
   rowMe: { borderColor: "#4F46E5", borderWidth: 2 },
-  rankBadge: {
-    minWidth: 30,
-    height: 20,
-    paddingHorizontal: 7,
-    borderRadius: 8,
-    backgroundColor: "#EEF2FF",
-    borderWidth: 1,
-    borderColor: "#C7D2FE",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-
-  firstRankBadge: {
-    backgroundColor: "#DBEAFE",
-    borderColor: "#93C5FD",
-  },
-
-  secondRankBadge: {
-    backgroundColor: "#EDE9FE",
-    borderColor: "#C4B5FD",
-  },
-
-  thirdRankBadge: {
-    backgroundColor: "#CFFAFE",
-    borderColor: "#67E8F9",
-  },
-
-  rankText: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#3730A3",
-    textAlign: "center",
-    includeFontPadding: false,
-  },
   rowBody: { flex: 1, flexDirection: "row", alignItems: "center" },
   avatar: {
     width: 46,
@@ -1316,12 +1393,6 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     marginRight: 8,
     minWidth: 76,
-  },
-  rankTextTop: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: "#64748B",
-    marginBottom: 2,
   },
   stepsNumber: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
   stepsLabel: { fontSize: 10, color: "#64748B", marginTop: 1 },

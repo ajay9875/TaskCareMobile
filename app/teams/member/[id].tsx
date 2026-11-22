@@ -12,6 +12,7 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
+import { useAuth } from "../../../context/AuthContext"; // 🔥 Make sure this path is correct
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
@@ -75,6 +76,19 @@ const CustomProgressRing = ({ percentage }: { percentage: number }) => {
   );
 };
 
+// 🔥 Helper to check for Team Admin status (Exact match from admin team file)
+function isTeamAdmin(member: any): boolean {
+  const role = (member?.role ?? "").toLowerCase();
+
+  return (
+    !!member?.is_admin ||
+    !!member?.is_team_admin ||
+    !!member?.team_admin ||
+    role === "admin" ||
+    role === "team_admin"
+  );
+}
+
 type MemberInfo = {
   id: number;
   name: string;
@@ -85,15 +99,21 @@ type MemberInfo = {
   target_steps?: number;
   status_state?: "online" | "offline" | "never";
   status_label?: string;
+  role?: string;
+  is_admin?: boolean;
+  is_team_admin?: boolean;
+  team_admin?: boolean;
 };
 
 export default function TeamMemberHistory() {
-  // 1. Update the params destructuring at the top
   const { id, team_id } = useLocalSearchParams<{
     id: string;
     team_id: string;
   }>();
   const router = useRouter();
+
+  // 🔥 Get the currently logged in user
+  const { user: currentUser } = useAuth();
 
   const [userInfo, setUserInfo] = useState<MemberInfo | null>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -181,13 +201,38 @@ export default function TeamMemberHistory() {
     const signedInLabel = userInfo.is_signed_in ? "Signed In" : "Signed Out";
     const signedInColor = userInfo.is_signed_in ? "#16A34A" : "#DC2626";
 
+    // 🔥 Badge Logic
+    const isAdmin = isTeamAdmin(userInfo);
+    const isYou = Number(currentUser?.id) === Number(userInfo.id);
+
     return (
       <View style={styles.userHeaderCard}>
         <View style={styles.userAvatar}>
           <Text style={styles.userAvatarText}>{initial}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: 14 }}>
-          <Text style={styles.userName}>{userInfo.name}</Text>
+          {/* 🔥 Badge Row Container */}
+          <View style={styles.nameRow}>
+            <Text style={styles.userName}>{userInfo.name}</Text>
+
+            {isAdmin && (
+              <View style={styles.adminLabel}>
+                <MaterialCommunityIcons
+                  name="crown"
+                  size={13}
+                  color="#D97706"
+                />
+                <Text style={styles.adminLabelText}>Admin</Text>
+              </View>
+            )}
+
+            {isYou && (
+              <View style={styles.youLabel}>
+                <Text style={styles.youLabelText}>You</Text>
+              </View>
+            )}
+          </View>
+
           <Text style={styles.userEmail} numberOfLines={1}>
             {userInfo.email}
           </Text>
@@ -632,6 +677,41 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   userAvatarText: { color: "#0f0f0f", fontSize: 22, fontWeight: "800" },
+
+  // 🔥 EXACT STYLES FROM ADMIN TEAM FILE
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 2,
+  },
+  adminLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  adminLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#92400E",
+  },
+  youLabel: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  youLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+
   userName: { color: "#ffffff", fontSize: 18, fontWeight: "800" },
   userEmail: { color: "#a4b0be", fontSize: 13, marginTop: 2 },
   userId: {

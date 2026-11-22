@@ -149,14 +149,6 @@ function StatusPill({
   );
 }
 
-// 🏅 Medal emoji helper (rank 1–3 get a medal, others just "#N")
-function rankBadge(rank: number) {
-  if (rank === 1) return { text: "🥇 #1", style: styles.firstRank };
-  if (rank === 2) return { text: "🥈 #2", style: styles.secondRank };
-  if (rank === 3) return { text: "🥉 #3", style: styles.thirdRank };
-  return { text: `#${rank}`, style: styles.otherRank };
-}
-
 export default function AdminPanel() {
   const router = useRouter();
   const { user, isAdmin, isLoggedIn } = useAuth();
@@ -206,33 +198,6 @@ export default function AdminPanel() {
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
   }, [teams]);
-
-  // ─────────────────────────────────────────────────────────────
-  // 🏅 RANK MAP — computed by steps DESC across ALL users.
-  // ─────────────────────────────────────────────────────────────
-  const rankMap = useMemo(() => {
-    const map = new Map<number, number>();
-
-    const bySteps = [...users].sort(
-      (a, b) => (b.steps_today ?? 0) - (a.steps_today ?? 0),
-    );
-
-    let currentRank = 0;
-    let previousSteps: number | null = null;
-
-    bySteps.forEach((u, index) => {
-      const steps = u.steps_today ?? 0;
-
-      if (previousSteps === null || steps !== previousSteps) {
-        currentRank = index + 1;
-      }
-
-      map.set(u.id, currentRank);
-      previousSteps = steps;
-    });
-
-    return map;
-  }, [users]);
 
   // ─────────────────────────────────────────────────────────────
   // 🅰️ SORTED USERS
@@ -677,8 +642,6 @@ export default function AdminPanel() {
                 sortedUsers.map((item) => {
                   const isDeleting = deletingUserId === item.id;
                   const isSelf = Number(user?.id) === Number(item.id);
-                  const rank = rankMap.get(item.id) ?? 0;
-                  const badge = rank > 0 ? rankBadge(rank) : null;
 
                   return (
                     <View key={String(item.id)} style={styles.row}>
@@ -733,15 +696,8 @@ export default function AdminPanel() {
                             {item.email}
                           </Text>
 
-                          {/* 🏅 Rank + steps row */}
+                          {/* Steps today */}
                           <View style={styles.userRankRow}>
-                            {badge && (
-                              <View style={[styles.userRankBadge, badge.style]}>
-                                <Text style={styles.userRankText}>
-                                  {badge.text}
-                                </Text>
-                              </View>
-                            )}
                             <Text style={styles.userStepsText}>
                               {(item.steps_today ?? 0).toLocaleString()} steps
                               today
@@ -1257,7 +1213,7 @@ const styles = StyleSheet.create({
   teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
   teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
 
-  // Rank badge row (Users tab)
+  // Steps row (Users tab)
   userRankRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1265,33 +1221,6 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginBottom: 2,
     flexWrap: "wrap",
-  },
-  userRankBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 3,
-    borderRadius: 7,
-    borderWidth: 1,
-  },
-  firstRank: {
-    backgroundColor: "#DBEAFE",
-    borderColor: "#93C5FD",
-  },
-  secondRank: {
-    backgroundColor: "#EDE9FE",
-    borderColor: "#C4B5FD",
-  },
-  thirdRank: {
-    backgroundColor: "#CFFAFE",
-    borderColor: "#67E8F9",
-  },
-  otherRank: {
-    backgroundColor: "#EEF2FF",
-    borderColor: "#C7D2FE",
-  },
-  userRankText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#3730A3",
   },
   userStepsText: {
     fontSize: 11,

@@ -3,10 +3,13 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -100,6 +103,16 @@ export default function AdminTeamDetails() {
   const [team, setTeam] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  // Delete Member Modal State
+  const [deleteModalVisible, setDeleteModalVisible] = useState(false);
+  const [memberToDelete, setMemberToDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchTeam = useCallback(
     async (isRefresh = false) => {
@@ -156,6 +169,89 @@ export default function AdminTeamDetails() {
     });
   }, [team?.members]);
 
+  // ─── DELETE MEMBER LOGIC ───
+  const openDeleteModal = (memberId: number, memberName: string) => {
+    setMemberToDelete({ id: memberId, name: memberName });
+    setDeleteConfirmText("");
+    setDeleteModalVisible(true);
+  };
+
+  const handleTransferAdmin = async (userId: number, userName: string) => {
+    Alert.alert(
+      "Transfer Admin Role?",
+      `${userName} will become the new team admin. You will be demoted to a regular member.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          style: "destructive",
+          onPress: async () => {
+            setIsTransferring(true);
+            try {
+              const res = await fetch(
+                `${API_BASE}/superadmin/teams/${id}/transfer-admin`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ user_id: userId }),
+                },
+              );
+
+              const data = await res.json().catch(() => ({}));
+
+              if (res.ok) {
+                Alert.alert("Success", `${userName} is now the team admin.`);
+                fetchTeam();
+              } else {
+                Alert.alert(
+                  "Error",
+                  data.error || data.message || "Failed to transfer admin role",
+                );
+              }
+            } catch {
+              Alert.alert("Error", "Network error");
+            } finally {
+              setIsTransferring(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const executeDeleteMember = async () => {
+    if (!memberToDelete || deleteConfirmText !== "DELETE") return;
+    setIsDeleting(true);
+    setDeleteModalVisible(false);
+
+    try {
+        const res = await fetch(
+          `${API_BASE}/superadmin/teams/${id}/members/${memberToDelete.id}`,
+          {
+            method: "DELETE",
+            credentials: "include",
+          },
+        );
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        Alert.alert("Removed", `${memberToDelete.name} removed.`);
+        fetchTeam();
+      } else {
+        Alert.alert(
+          "Error",
+          data.error || data.message || "Failed to remove member",
+        );
+      }
+    } catch (e) {
+      Alert.alert("Error", "Network error");
+    } finally {
+      setIsDeleting(false);
+      setMemberToDelete(null);
+    }
+  };
+
   if (loading && !team) {
     return (
       <View style={styles.loadingContainer}>
@@ -208,78 +304,193 @@ export default function AdminTeamDetails() {
             const isYou = Number(user?.id) === Number(item.user_id);
 
             return (
-              <TouchableOpacity
-                key={String(item.user_id)}
-                style={styles.memberRow}
-                activeOpacity={0.7}
-                onPress={() =>
-                  router.push({
-                    pathname: "/admin/user/[id]",
-                    params: { id: String(item.user_id) },
-                  })
-                }
-              >
-                <View
-                  style={[
-                    styles.avatar,
-                    { backgroundColor: getAvatarColor(index) },
-                  ]}
+              <View key={String(item.user_id)} style={styles.memberRow}>
+                <TouchableOpacity
+                  style={styles.rowBody}
+                  activeOpacity={0.7}
+                  onPress={() =>
+                    router.push({
+                      pathname: "/admin/user/[id]",
+                      params: { id: String(item.user_id) },
+                    })
+                  }
                 >
-                  <Text style={styles.avatarText}>
-                    {item.name?.charAt(0)?.toUpperCase() ?? "?"}
-                  </Text>
-                </View>
-
-                <View style={styles.memberInfo}>
-                  <View style={styles.nameRow}>
-                    <Text style={styles.memberName} numberOfLines={1}>
-                      {item.name}
+                  <View
+                    style={[
+                      styles.avatar,
+                      { backgroundColor: getAvatarColor(index) },
+                    ]}
+                  >
+                    <Text style={styles.avatarText}>
+                      {item.name?.charAt(0)?.toUpperCase() ?? "?"}
                     </Text>
-
-                    {isAdmin && (
-                      <View style={styles.adminLabel}>
-                        <MaterialCommunityIcons
-                          name="crown"
-                          size={13}
-                          color="#D97706"
-                        />
-                        <Text style={styles.adminLabelText}>Admin</Text>
-                      </View>
-                    )}
-
-                    {isYou && (
-                      <View style={styles.youLabel}>
-                        <Text style={styles.youLabelText}>You</Text>
-                      </View>
-                    )}
                   </View>
 
-                  <Text style={styles.emailText} numberOfLines={1}>
-                    {item.email || "No email"}
-                  </Text>
+                  <View style={styles.memberInfo}>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.memberName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
 
-                  <Text style={styles.stepsText}>
-                    {(item.steps_today ?? 0).toLocaleString()} steps today
-                  </Text>
+                      {isAdmin && (
+                        <View style={styles.adminLabel}>
+                          <MaterialCommunityIcons
+                            name="crown"
+                            size={13}
+                            color="#D97706"
+                          />
+                          <Text style={styles.adminLabelText}>Admin</Text>
+                        </View>
+                      )}
 
-                  <StatusPill
-                    state={item.state}
-                    label={item.label}
-                    isSignedIn={item.is_signed_in}
-                  />
+                      {isYou && (
+                        <View style={styles.youLabel}>
+                          <Text style={styles.youLabelText}>You</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    <Text style={styles.emailText} numberOfLines={1}>
+                      {item.email || "No email"}
+                    </Text>
+
+                    <Text style={styles.stepsText}>
+                      {(item.steps_today ?? 0).toLocaleString()} steps today
+                    </Text>
+
+                    <StatusPill
+                      state={item.state}
+                      label={item.label}
+                      isSignedIn={item.is_signed_in}
+                    />
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.actionsWrap}>
+                  {/* 👑 Make Admin — show only for non-admin members that are not you */}
+                  {!isAdmin && !isYou && (
+                    <TouchableOpacity
+                      style={styles.makeAdminBtn}
+                      disabled={isTransferring}
+                      onPress={() =>
+                        handleTransferAdmin(item.user_id, item.name)
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons
+                        name="crown-outline"
+                        size={18}
+                        color="#0284C7"
+                      />
+                    </TouchableOpacity>
+                  )}
+
+                  {/* 🗑️ Trash — hide for admins and yourself */}
+                  {!isAdmin && !isYou && (
+                    <TouchableOpacity
+                      style={styles.trashBtn}
+                      onPress={() => openDeleteModal(item.user_id, item.name)}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={20}
+                        color="#DC2626"
+                      />
+                    </TouchableOpacity>
+                  )}
+
+                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
                 </View>
-
-                <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
-              </TouchableOpacity>
+              </View>
             );
           })
         )}
       </ScrollView>
+
+      {/* ─── REMOVE MEMBER CONFIRMATION MODAL ─── */}
+      <Modal
+        visible={deleteModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <MaterialCommunityIcons
+                name="alert-circle"
+                size={36}
+                color="#DC2626"
+              />
+              <Text style={styles.modalTitle}>Remove Member?</Text>
+            </View>
+            <Text style={styles.modalBody}>
+              Remove{" "}
+              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
+                {memberToDelete?.name}
+              </Text>
+              ?
+            </Text>
+            <Text style={styles.modalSubBody}>
+              Their fitness history will not be deleted.
+            </Text>
+            <Text style={styles.modalInstruction}>
+              Type{" "}
+              <Text style={{ fontWeight: "bold", color: "#DC2626" }}>
+                DELETE
+              </Text>{" "}
+              to confirm.
+            </Text>
+            <TextInput
+              style={styles.deleteInput}
+              placeholder="DELETE"
+              value={deleteConfirmText}
+              onChangeText={setDeleteConfirmText}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              placeholderTextColor="#94A3B8"
+            />
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => setDeleteModalVisible(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnDelete,
+                  deleteConfirmText !== "DELETE" && {
+                    backgroundColor: "#FCA5A5",
+                  },
+                ]}
+                disabled={deleteConfirmText !== "DELETE" || isDeleting}
+                onPress={executeDeleteMember}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnDeleteText}>Remove</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  makeAdminBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#E0F2FE",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
@@ -327,6 +538,28 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     borderWidth: 1,
     borderColor: "#E2E8F0",
+  },
+
+  rowBody: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  actionsWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingLeft: 6,
+  },
+
+  trashBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   avatar: {
@@ -445,4 +678,77 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginTop: 10,
   },
+
+  // ─── MODAL STYLES ───
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.6)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  modalContent: {
+    width: "100%",
+    maxWidth: 400,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    padding: 24,
+    elevation: 10,
+  },
+  modalHeader: { alignItems: "center", marginBottom: 16 },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#0F172A",
+    marginTop: 8,
+  },
+  modalBody: {
+    fontSize: 15,
+    color: "#475569",
+    textAlign: "center",
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  modalSubBody: {
+    fontSize: 13,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  modalInstruction: {
+    fontSize: 14,
+    color: "#475569",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  deleteInput: {
+    backgroundColor: "#F8FAFC",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 10,
+    padding: 15,
+    fontSize: 18,
+    textAlign: "center",
+    fontWeight: "700",
+    letterSpacing: 2,
+    color: "#0F172A",
+    marginBottom: 24,
+  },
+  modalActions: { flexDirection: "row", gap: 12 },
+  modalBtnCancel: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+  },
+  modalBtnCancelText: { color: "#64748B", fontWeight: "700", fontSize: 15 },
+  modalBtnDelete: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+  },
+  modalBtnDeleteText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
 });
