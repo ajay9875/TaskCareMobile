@@ -177,9 +177,13 @@ export default function AdminTeamDetails() {
   };
 
   const handleTransferAdmin = async (userId: number, userName: string) => {
+    const makingSelfAdmin = Number(userId) === Number(user?.id);
+
     Alert.alert(
-      "Transfer Admin Role?",
-      `${userName} will become the new team admin. You will be demoted to a regular member.`,
+      makingSelfAdmin ? "Claim Admin Role?" : "Transfer Admin Role?",
+      makingSelfAdmin
+        ? `You will become the new team admin. The current admin will be demoted to a regular member.`
+        : `${userName} will become the new team admin.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -201,7 +205,12 @@ export default function AdminTeamDetails() {
               const data = await res.json().catch(() => ({}));
 
               if (res.ok) {
-                Alert.alert("Success", `${userName} is now the team admin.`);
+                Alert.alert(
+                  "Success",
+                  makingSelfAdmin
+                    ? "You are now the team admin."
+                    : `${userName} is now the team admin.`,
+                );
                 fetchTeam();
               } else {
                 Alert.alert(
@@ -226,13 +235,13 @@ export default function AdminTeamDetails() {
     setDeleteModalVisible(false);
 
     try {
-        const res = await fetch(
-          `${API_BASE}/superadmin/teams/${id}/members/${memberToDelete.id}`,
-          {
-            method: "DELETE",
-            credentials: "include",
-          },
-        );
+      const res = await fetch(
+        `${API_BASE}/superadmin/teams/${id}/members/${memberToDelete.id}`,
+        {
+          method: "DELETE",
+          credentials: "include",
+        },
+      );
       const data = await res.json().catch(() => ({}));
 
       if (res.ok) {
@@ -367,8 +376,8 @@ export default function AdminTeamDetails() {
                 </TouchableOpacity>
 
                 <View style={styles.actionsWrap}>
-                  {/* 👑 Make Admin — show only for non-admin members that are not you */}
-                  {!isAdmin && !isYou && (
+                  {/* 👑 Make Admin — superadmin can transfer to ANY non-admin member (including self) */}
+                  {!isAdmin && (
                     <TouchableOpacity
                       style={styles.makeAdminBtn}
                       disabled={isTransferring}
