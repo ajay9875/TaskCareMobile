@@ -1,9 +1,12 @@
 // app/index.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import NetInfo from "@react-native-community/netinfo";
+
 import {
   ActivityIndicator,
+  RefreshControl,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -19,10 +22,19 @@ export default function LandingScreen() {
   const router = useRouter();
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
+  const hasLoadedSuccessfullyRef = useRef(false);
+
   const { user, isLoggedIn, checkSession } = useAuth();
 
   const [loading, setLoading] = useState(true);
-  const [hasNetError, setHasNetError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [errorType, setErrorType] = useState<
+    "offline" | "server" | null
+  >(null);
+
+  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] =
+    useState(false);
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
 
   // AFTER
@@ -37,83 +49,188 @@ export default function LandingScreen() {
     };
   } | null>(null);
 
-  const fetchPublicStats = useCallback(async () => {
+  useFocusEffect(
+  useCallback(() => {
+    loadHomeData();
+  }, [loadHomeData]),
+);
+
+const loadHomeData = useCallback(
+  async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else if (!hasLoadedSuccessfullyRef.current) {
+        setLoading(true);
+    }
+
+    setErrorType(null);
+
     try {
+      // 1. Check actual internet connectivity
+      const networkState = await NetInfo.fetch();
+
+      if (
+        networkState.isConnected === false ||
+        networkState.isInternetReachable === false
+      ) {
+        setErrorType("offline");
+        return;
+      }
+
+      // 2. Check whether the backend is reachable
+      if (!API_BASE) {
+        throw new Error("API configuration unavailable");
+      }
+
       const res = await fetch(`${API_BASE}/public/stats`, {
         credentials: "include",
       });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.status === "success") {
-        // AFTER
-        setPublicStats({
-          total_users: Number(data.total_users) || 0,
-          total_steps: Number(data.total_steps) || 0,
-          tasks_handled: Number(data.tasks_handled) || 0,
-          display: {
-            total_users:
-              data.display?.total_users ?? String(data.total_users ?? 0),
-            total_steps:
-              data.display?.total_steps ?? String(data.total_steps ?? 0),
-            tasks_handled:
-              data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
-          },
-        });
+
+      if (!res.ok) {
+        throw new Error(`Backend returned status ${res.status}`);
       }
-    } catch (e) {}
-  }, [API_BASE]);
 
-  useFocusEffect(
-    useCallback(() => {
-      checkSession();
-      fetchPublicStats();
+      const data = await res.json();
+
+      if (data.status !== "success") {
+        throw new Error("Invalid backend response");
+      }
+
+      // 3. Update public statistics
+      setPublicStats({
+        total_users: Number(data.total_users) || 0,
+        total_steps: Number(data.total_steps) || 0,
+        tasks_handled: Number(data.tasks_handled) || 0,
+        display: {
+          total_users:
+            data.display?.total_users ??
+            String(data.total_users ?? 0),
+
+          total_steps:
+            data.display?.total_steps ??
+            String(data.total_steps ?? 0),
+
+          tasks_handled:
+            data.display?.tasks_handled ??
+            String(data.tasks_handled ?? 0),
+        },
+      });
+
+      // 4. Refresh authentication only after connectivity is confirmed
+      await checkSession();
+
+      hasLoadedSuccessfullyRef.current = true;
+      setHasLoadedSuccessfully(true);
+      setErrorType(null);
+    } catch (error) {
+      console.log("Landing screen loading error:", error);
+
+      // Internet was available, but the backend request failed.
+      setErrorType("server");
+    } finally {
       setLoading(false);
-    }, [checkSession, fetchPublicStats]),
+      setRefreshing(false);
+    }
+  },
+  [API_BASE, checkSession]
+);
+
+// Initial loading
+if (loading && !hasLoadedSuccessfully) {
+  return (
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: "#1a1a2e",
+          justifyContent: "center",
+          alignItems: "center",
+        },
+      ]}
+    >
+      <ActivityIndicator size="large" color="#4ecca3" />
+      <Text style={{ color: "#fff", marginTop: 12 }}>
+        Loading FitWisely...
+      </Text>
+    </View>
   );
+}
 
-  if (loading) {
-    return (
-      <View
-        style={[
-          styles.container,
-          { backgroundColor: "#1a1a2e", justifyContent: "center" },
-        ]}
-      >
-        <ActivityIndicator size="large" color="#4ecca3" />
+// Connection/backend error screen
+if (errorType && !hasLoadedSuccessfully) {
+  const isOffline = errorType === "offline";
+
+  return (
+    <SafeAreaView
+      style={{
+        flex: 1,
+        backgroundColor: "#1a1a2e",
+      }}
+    >
+      <View style={styles.errorContainer}>
+        <MaterialCommunityIcons
+          name={
+            isOffline
+              ? "wifi-off"
+              : "cloud-alert-outline"
+          }
+          size={76}
+          color={isOffline ? "#ff6b35" : "#fbbf24"}
+          style={{ marginBottom: 20 }}
+        />
+
+        <Text style={styles.errorTitle}>
+          {isOffline
+            ? "No Internet Connection"
+            : "Service Temporarily Unavailable"}
+        </Text>
+
+        <Text style={styles.errorSubtext}>
+          {isOffline
+            ? "Your device is currently offline. Please check your internet connection and try again."
+            : "We are currently unable to connect to our servers. Your internet connection may be working, but our service is temporarily unavailable. Please try again later."}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.retryBtn}
+          onPress={() => loadHomeData()}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator
+              size="small"
+              color="#1a1a2e"
+            />
+          ) : (
+            <>
+              <MaterialCommunityIcons
+                name="refresh"
+                size={20}
+                color="#1a1a2e"
+              />
+              <Text style={styles.retryBtnText}>
+                Try Again
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+
+        <Text
+          style={{
+            color: "#94A3B8",
+            fontSize: 12,
+            marginTop: 22,
+            textAlign: "center",
+          }}
+        >
+          {isOffline
+            ? "FitWisely will be available once your connection is restored."
+            : "Thank you for your patience. Please try again shortly."}
+        </Text>
       </View>
-    );
-  }
-
-  if (hasNetError) {
-    return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#1a1a2e" }}>
-        <View style={styles.errorContainer}>
-          <MaterialCommunityIcons
-            name="cloud-off-outline"
-            size={80}
-            color="#ff6b35"
-            style={{ marginBottom: 20 }}
-          />
-          <Text style={styles.errorTitle}>Sync Connection Error</Text>
-          <Text style={styles.errorSubtext}>
-            Could not load data. Check your connection.
-          </Text>
-          <TouchableOpacity
-            style={styles.retryBtn}
-            onPress={() => {
-              setLoading(true);
-              checkSession();
-              fetchPublicStats();
-              setLoading(false);
-            }}
-          >
-            <MaterialCommunityIcons name="refresh" size={20} color="#1a1a2e" />
-            <Text style={styles.retryBtnText}>Retry Connection</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
+    </SafeAreaView>
+  );
+}
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
@@ -128,7 +245,106 @@ export default function LandingScreen() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={styles.scrollContainer}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => loadHomeData(true)}
+            tintColor="#4ecca3"
+            colors={["#4ecca3"]}
+            progressBackgroundColor="#ffffff"
+          />
+        }
+      >
+
+        {errorType && (
+  <View
+    style={{
+      width: "100%",
+      backgroundColor:
+        errorType === "offline" ? "#FFF7ED" : "#FEF2F2",
+      borderColor:
+        errorType === "offline" ? "#FDBA74" : "#FECACA",
+      borderWidth: 1,
+      borderRadius: 12,
+      padding: 14,
+      marginBottom: 16,
+    }}
+  >
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <MaterialCommunityIcons
+        name={
+          errorType === "offline"
+            ? "wifi-off"
+            : "cloud-alert-outline"
+        }
+        size={22}
+        color={
+          errorType === "offline" ? "#C2410C" : "#DC2626"
+        }
+      />
+
+      <Text
+        style={{
+          fontWeight: "800",
+          fontSize: 14,
+          marginLeft: 8,
+          color: "#1E293B",
+          flex: 1,
+        }}
+      >
+        {errorType === "offline"
+          ? "Internet connection lost"
+          : "Server temporarily unavailable"}
+      </Text>
+    </View>
+
+    <Text
+      style={{
+        fontSize: 13,
+        color: "#475569",
+        marginTop: 6,
+        lineHeight: 19,
+      }}
+    >
+      {errorType === "offline"
+        ? "Please check your internet connection and retry."
+        : "We couldn't reach our server. Please try again later."}
+    </Text>
+
+    <TouchableOpacity
+      onPress={() => loadHomeData(true)}
+      style={{
+        marginTop: 10,
+        alignSelf: "flex-start",
+        flexDirection: "row",
+        alignItems: "center",
+      }}
+    >
+      <MaterialCommunityIcons
+        name="refresh"
+        size={18}
+        color="#2563EB"
+      />
+
+      <Text
+        style={{
+          color: "#2563EB",
+          fontWeight: "700",
+          marginLeft: 5,
+        }}
+      >
+        Retry Connection
+      </Text>
+    </TouchableOpacity>
+  </View>
+)}
         <FestivalBlock />
         <Text style={styles.shortSubtext}>
           Stay fit, productive and organized. All in one place.
@@ -266,13 +482,15 @@ export default function LandingScreen() {
           <View style={styles.featureRow}>
             <MaterialCommunityIcons name="speedometer" size={18} color="#555" />
             <Text style={styles.featureText}>
-              Pace & Distance – Automatically calculates your walking speed and distance.
+              Pace & Distance – Automatically calculates your walking speed and
+              distance.
             </Text>
           </View>
           <View style={styles.featureRow}>
             <Ionicons name="sync-circle" size={18} color="#555" />
             <Text style={styles.featureText}>
-              Auto-Sync Metrics – Saves records to the database seamlessly in the background.
+              Auto-Sync Metrics – Saves records to the database seamlessly in
+              the background.
             </Text>
           </View>
           <View style={styles.featureRow}>
@@ -298,7 +516,8 @@ export default function LandingScreen() {
           <View style={styles.stepRow}>
             <MaterialCommunityIcons name="walk" size={20} color="#4ecca3" />
             <Text style={styles.stepText}>
-              2. Head to the tracking screen to start walking and tracking your steps.
+              2. Head to the tracking screen to start walking and tracking your
+              steps.
             </Text>
           </View>
           <View style={styles.stepRow}>
