@@ -18,8 +18,9 @@ import {
 import { useAuth } from "../context/AuthContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
+const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+const MAX_TEAMS = 10;
 
-// Deterministic avatar colors so each user always gets the same color
 const AVATAR_COLORS = [
   "#4F46E5",
   "#0284C7",
@@ -35,6 +36,24 @@ function colorForUser(id: number): string {
   return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length];
 }
 
+// ── Presence helpers (identical logic to app/teams/index.tsx) ──
+function isOnlineMember(m: any): boolean {
+  if (!m?.last_seen) return false;
+  const raw: string = m.last_seen;
+  const withTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(raw) ? raw : `${raw}+05:30`;
+  const t = Date.parse(withTz);
+  if (isNaN(t)) return false;
+  return Date.now() - t <= ONLINE_WINDOW_MS;
+}
+
+function teamOnlineCount(team: any): number {
+  return (team?.members ?? []).filter(isOnlineMember).length;
+}
+
+function teamSignedInCount(team: any): number {
+  return (team?.members ?? []).filter((m: any) => !!m.is_signed_in).length;
+}
+
 type AdminUser = {
   id: number;
   name: string;
@@ -46,6 +65,12 @@ type AdminUser = {
   is_signed_in?: boolean;
   last_status_change?: string | null;
   created_at_label?: string;
+
+  // Add these
+  is_superadmin?: boolean;
+  is_super_admin?: boolean;
+  is_admin?: boolean;
+  role?: string;
 };
 
 type AdminTeam = {
@@ -55,11 +80,12 @@ type AdminTeam = {
   created_by: string;
   created_at_label: string;
   member_count: number;
-  online_member_count?: number; // NEW
-  signed_in_member_count?: number; // NEW
+  online_member_count?: number;
+  signed_in_member_count?: number;
+  is_admin?: boolean;
+  members?: any[];
 };
 
-// ── Status pill (mirrors app/teams/member/[id].tsx) ──
 function statusColorFor(state?: string): string {
   switch (state) {
     case "online":
@@ -88,15 +114,12 @@ function StatusPill({
 
   return (
     <View style={styles.pillRow}>
-      {/* activity pill */}
       <View style={styles.statusPill}>
         <View style={[styles.statusDot, { backgroundColor: color }]} />
         <Text style={[styles.statusPillText, { color }]} numberOfLines={1}>
           {label ?? "Not active yet"}
         </Text>
       </View>
-
-      {/* signed in / out pill */}
       <View style={styles.statusPill}>
         <View style={[styles.statusDot, { backgroundColor: signedInColor }]} />
         <Text
@@ -118,16 +141,18 @@ export default function AdminPanel() {
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Per-row deleting flags so we can show an inline spinner
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [deletingTeamId, setDeletingTeamId] = useState<number | null>(null);
 
   // Super Admin State
   const [isVerified, setIsVerified] = useState(false);
   const [pin, setPin] = useState("");
-  const [showPin, setShowPin] = useState(false); // Toggle for PIN visibility
-  const [isVerifying, setIsVerifying] = useState(false); // For the Unlock button spinner
+  const [showPin, setShowPin] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [activeTab, setActiveTab] = useState<"users" | "teams">("users");
+
+  // ✅ Selected team (same pattern as app/teams/index.tsx)
+  const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
   // Delete Confirmation Modal State
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -139,26 +164,97 @@ export default function AdminPanel() {
   } | null>(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
-  // ✅ NEW: Admin Stats calculation
-  const adminStats = useMemo(() => {
-    const totalUsers = users.length;
-    const onlineUsers = users.filter((u) => u.state === "online").length;
-    const totalTeams = teams.length;
+  // 60s ticker — re-evaluates online pills
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
-    // Count unique members across all teams
-    // (Assuming you might not have a direct 'members' array in AdminTeam, we use member_count)
-    const totalMemberships = teams.reduce(
-      (sum, t) => sum + (t.member_count || 0),
+  const activeTeam = useMemo(
+    () => teams.find((t) => t.id === selectedTeamId) || null,
+    [teams, selectedTeamId],
+  );
+
+  const sortedTeams = useMemo(() => {
+    return [...teams].sort((a, b) => {
+      if (a.is_admin && !b.is_admin) return -1;
+      if (!a.is_admin && b.is_admin) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+  }, [teams]);
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      const aIsSuperAdmin =
+        a.is_superadmin ||
+        a.is_super_admin ||
+        a.role?.toLowerCase() === "superadmin" ||
+        a.role?.toLowerCase() === "super_admin";
+
+      const bIsSuperAdmin =
+        b.is_superadmin ||
+        b.is_super_admin ||
+        b.role?.toLowerCase() === "superadmin" ||
+        b.role?.toLowerCase() === "super_admin";
+
+      const aIsAdmin = a.is_admin || a.role?.toLowerCase() === "admin";
+      const bIsAdmin = b.is_admin || b.role?.toLowerCase() === "admin";
+
+      // Super Admin always first
+      if (aIsSuperAdmin && !bIsSuperAdmin) return -1;
+      if (!aIsSuperAdmin && bIsSuperAdmin) return 1;
+
+      // Other admins next
+      if (aIsAdmin && !bIsAdmin) return -1;
+      if (!aIsAdmin && bIsAdmin) return 1;
+
+      // Remaining users alphabetically
+      return (a.name || "").localeCompare(b.name || "", undefined, {
+        sensitivity: "base",
+      });
+    });
+  }, [users]);
+
+  // ── Global rollups ──
+  function allTeamsOnlineCount(): number {
+    const uniqueUsers = new Set();
+    teams.forEach((t) => {
+      (t.members ?? []).forEach((m: any) => {
+        if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
+      });
+    });
+    return uniqueUsers.size; // De-duped
+  }
+
+  function allTeamsMemberCount(): number {
+    // Sum of all memberships (not de-duped) so it matches the list above
+    return teams.reduce(
+      (sum, t) => sum + (t.members?.length ?? t.member_count ?? 0),
       0,
     );
+  }
 
-    return {
-      totalUsers,
-      onlineUsers,
-      totalTeams,
-      totalMemberships,
-    };
-  }, [users, teams]);
+  function allTeamsSignedInCount(): number {
+    const uniqueUsers = new Set();
+    teams.forEach((t) => {
+      (t.members ?? []).forEach((m: any) => {
+        if (m.is_signed_in) uniqueUsers.add(m.user_id);
+      });
+    });
+    return uniqueUsers.size; // De-duped
+  }
+
+  const teamCount = teams.length;
+  const adminTeamCount = teams.filter((t) => t.is_admin).length;
+
+  // User-tab stats (Users / Online / Signed In)
+  const userStats = useMemo(() => {
+    const totalUsers = users.length;
+    const onlineUsers = users.filter((u) => u.state === "online").length;
+    const signedInUsers = users.filter((u) => !!u.is_signed_in).length;
+    return { totalUsers, onlineUsers, signedInUsers };
+  }, [users]);
 
   // ─────────────────────────────────────────────────────────────
   // OPEN DELETE MODAL
@@ -167,7 +263,7 @@ export default function AdminPanel() {
     type: "user" | "team",
     item: AdminUser | AdminTeam,
   ) => {
-    setDeleteConfirmText(""); // Reset text input
+    setDeleteConfirmText("");
     if (type === "user") {
       const u = item as AdminUser;
       setDeleteTarget({
@@ -280,7 +376,7 @@ export default function AdminPanel() {
         fetchData();
       } else {
         Alert.alert("Error", "Invalid Super Admin PIN");
-        setPin(""); // Optional: clear the incorrect PIN
+        setPin("");
       }
     } catch {
       Alert.alert("Error", "Network error");
@@ -355,7 +451,6 @@ export default function AdminPanel() {
               Enter 6-digit PIN to unlock Teams and User Management
             </Text>
 
-            {/* ── PIN Input with Visibility Toggle ── */}
             <View style={styles.pinInputWrapper}>
               <TextInput
                 style={styles.pinInput}
@@ -414,7 +509,6 @@ export default function AdminPanel() {
     );
   }
 
-  // Show full screen spinner ONLY on initial load (when lists are empty)
   if (loading && users.length === 0 && teams.length === 0) {
     return (
       <View
@@ -437,10 +531,10 @@ export default function AdminPanel() {
         contentContainerStyle={{ paddingBottom: 40 }}
         refreshControl={
           <RefreshControl
-            refreshing={loading} // 👈 Ties to the fetchData loading state
-            onRefresh={fetchData} // 👈 Triggers the fetch
-            tintColor="#4F46E5" // 👈 Standard iOS spinner color
-            colors={["#4F46E5"]} // 👈 Standard Android spinner color
+            refreshing={loading}
+            onRefresh={fetchData}
+            tintColor="#4F46E5"
+            colors={["#4F46E5"]}
           />
         }
       >
@@ -463,7 +557,10 @@ export default function AdminPanel() {
               backgroundColor: activeTab === "users" ? "#fff" : "transparent",
               borderRadius: 8,
             }}
-            onPress={() => setActiveTab("users")}
+            onPress={() => {
+              setActiveTab("users");
+              setSelectedTeamId(null);
+            }}
           >
             <Text
               style={{
@@ -495,103 +592,378 @@ export default function AdminPanel() {
           </TouchableOpacity>
         </View>
 
-        {/* ✅ Admin Stats Strip */}
-        <View style={styles.statsRow}>
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons
-              name="account-group"
-              size={20}
-              color="#4F46E5"
-            />
-            <Text style={styles.statValue}>{adminStats.totalUsers}</Text>
-            <Text style={styles.statLabel}>Users</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons
-              name="check-circle"
-              size={20}
-              color="#16A34A"
-            />
-            <Text style={styles.statValue}>{adminStats.onlineUsers}</Text>
-            <Text style={styles.statLabel}>Online</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons
-              name="account-multiple"
-              size={20}
-              color="#D97706"
-            />
-            <Text style={styles.statValue}>{adminStats.totalTeams}</Text>
-            <Text style={styles.statLabel}>Teams</Text>
-          </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <MaterialCommunityIcons name="link" size={20} color="#0284C7" />
-            <Text style={styles.statValue}>{adminStats.totalMemberships}</Text>
-            <Text style={styles.statLabel}>Members</Text>
-          </View>
-        </View>
-
-        {/* ── LIST SECTION ── */}
-        <View style={{ padding: 16 }}>
-          {activeTab === "users" ? (
-            users.length === 0 ? (
-              <View style={styles.emptyBlock}>
+        {/* ── USERS TAB ── */}
+        {activeTab === "users" && (
+          <>
+            {/* 3-tile stats (Users / Online / Signed In) */}
+            <View style={styles.statsRow}>
+              <View style={styles.statItem}>
                 <MaterialCommunityIcons
-                  name="account-off-outline"
-                  size={42}
-                  color="#CBD5E1"
+                  name="account-group"
+                  size={20}
+                  color="#4F46E5"
                 />
-                <Text style={styles.emptyText}>No users yet</Text>
+                <Text style={styles.statValue}>{userStats.totalUsers}</Text>
+                <Text style={styles.statLabel}>Users</Text>
               </View>
-            ) : (
-              users.map((item) => {
-                const isDeleting = deletingUserId === item.id;
-                const isSelf = user?.id === item.id;
-                return (
-                  <View key={String(item.id)} style={styles.row}>
-                    <TouchableOpacity
-                      style={styles.rowBody}
-                      activeOpacity={0.7}
-                      disabled={isDeleting}
-                      onPress={() => router.push(`/admin/user/${item.id}`)}
-                    >
-                      <View
-                        style={[
-                          styles.avatar,
-                          { backgroundColor: colorForUser(item.id) },
-                        ]}
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <MaterialCommunityIcons
+                  name="check-circle"
+                  size={20}
+                  color="#16A34A"
+                />
+                <Text style={styles.statValue}>{userStats.onlineUsers}</Text>
+                <Text style={styles.statLabel}>Online</Text>
+              </View>
+              <View style={styles.statDivider} />
+              <View style={styles.statItem}>
+                <MaterialCommunityIcons
+                  name="login"
+                  size={20}
+                  color="#0284C7"
+                />
+                <Text style={styles.statValue}>{userStats.signedInUsers}</Text>
+                <Text style={styles.statLabel}>Signed In</Text>
+              </View>
+            </View>
+
+            <View style={{ padding: 16 }}>
+              {users.length === 0 ? (
+                <View style={styles.emptyBlock}>
+                  <MaterialCommunityIcons
+                    name="account-off-outline"
+                    size={42}
+                    color="#CBD5E1"
+                  />
+                  <Text style={styles.emptyText}>No users yet</Text>
+                </View>
+              ) : (
+                sortedUsers.map((item) => {
+                  const isDeleting = deletingUserId === item.id;
+                  const isSelf = user?.id === item.id;
+                  return (
+                    <View key={String(item.id)} style={styles.row}>
+                      <TouchableOpacity
+                        style={styles.rowBody}
+                        activeOpacity={0.7}
+                        disabled={isDeleting}
+                        onPress={() => router.push(`/admin/user/${item.id}`)}
                       >
-                        <Text style={styles.avatarText}>
-                          {item.name?.charAt(0)?.toUpperCase() ?? "?"}
-                        </Text>
-                      </View>
-                      <View style={styles.rowText}>
-                        <Text style={styles.rowName} numberOfLines={1}>
-                          {item.name}
-                        </Text>
-                        <Text style={styles.rowEmail} numberOfLines={1}>
-                          {item.email}
-                        </Text>
-                        <Text style={styles.rowMeta} numberOfLines={1}>
-                          Created {item.created_at_label ?? "—"} • ID #{item.id}
-                        </Text>
-                        <StatusPill
-                          state={item.state}
-                          label={item.label}
-                          isSignedIn={item.is_signed_in}
+                        <View
+                          style={[
+                            styles.avatar,
+                            { backgroundColor: colorForUser(item.id) },
+                          ]}
+                        >
+                          <Text style={styles.avatarText}>
+                            {item.name?.charAt(0)?.toUpperCase() ?? "?"}
+                          </Text>
+                        </View>
+                        <View style={styles.rowText}>
+                          <Text style={styles.rowName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.rowEmail} numberOfLines={1}>
+                            {item.email}
+                          </Text>
+                          <Text style={styles.rowMeta} numberOfLines={1}>
+                            Created {item.created_at_label ?? "—"} • ID #
+                            {item.id}
+                          </Text>
+                          <StatusPill
+                            state={item.state}
+                            label={item.label}
+                            isSignedIn={item.is_signed_in}
+                          />
+                        </View>
+                      </TouchableOpacity>
+
+                      <View style={styles.actionsWrap}>
+                        {!isSelf && (
+                          <TouchableOpacity
+                            style={styles.trashBtn}
+                            disabled={isDeleting}
+                            onPress={() => openDeleteModal("user", item)}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          >
+                            {isDeleting ? (
+                              <ActivityIndicator size="small" color="#DC2626" />
+                            ) : (
+                              <Ionicons
+                                name="trash-outline"
+                                size={20}
+                                color="#DC2626"
+                              />
+                            )}
+                          </TouchableOpacity>
+                        )}
+                        <Ionicons
+                          name="chevron-forward"
+                          size={22}
+                          color="#94A3B8"
                         />
                       </View>
-                    </TouchableOpacity>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          </>
+        )}
 
-                    <View style={styles.actionsWrap}>
-                      {!isSelf && (
+        {/* ── TEAMS TAB (mirrors app/teams/index.tsx) ── */}
+        {activeTab === "teams" && (
+          <>
+            {/* Horizontal Team Switcher */}
+            <View style={styles.switcherContainer}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.switcherScroll}
+              >
+                {sortedTeams.map((t) => (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[
+                      styles.teamPill,
+                      selectedTeamId === t.id && styles.teamPillActive,
+                    ]}
+                    onPress={() => setSelectedTeamId(t.id)}
+                  >
+                    <Text
+                      style={[
+                        styles.teamPillText,
+                        selectedTeamId === t.id && styles.teamPillTextActive,
+                      ]}
+                    >
+                      {t.is_admin ? "👑 " : ""}
+                      {t.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[
+                    styles.addTeamPill,
+                    selectedTeamId === null && styles.addTeamPillActive,
+                  ]}
+                  onPress={() => setSelectedTeamId(null)}
+                >
+                  <Ionicons
+                    name="apps"
+                    size={18}
+                    color={selectedTeamId === null ? "#fff" : "#4F46E5"}
+                  />
+                  <Text
+                    style={[
+                      styles.addTeamPillText,
+                      selectedTeamId === null && { color: "#fff" },
+                    ]}
+                  >
+                    All Teams
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+
+            {/* ✅ Team stats strip — SAME STRUCTURE as app/teams/index.tsx */}
+            <View style={styles.teamStatsCard}>
+              {/* Row 1 */}
+              <View style={styles.teamStatsRowInner}>
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="account-group"
+                    size={18}
+                    color="#4F46E5"
+                  />
+                  <Text style={styles.teamStatValue}>
+                    {activeTeam ? teamCount : teamCount}
+                  </Text>
+                  <Text style={styles.teamStatLabel}>Teams</Text>
+                </View>
+                <View style={styles.teamStatDivider} />
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="crown"
+                    size={18}
+                    color="#D97706"
+                  />
+                  <Text style={styles.teamStatValue}>{adminTeamCount}</Text>
+                  <Text style={styles.teamStatLabel}>Leading</Text>
+                </View>
+                <View style={styles.teamStatDivider} />
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="account-multiple"
+                    size={18}
+                    color="#0284C7"
+                  />
+                  <Text style={styles.teamStatValue}>
+                    {activeTeam
+                      ? (activeTeam.members?.length ??
+                        activeTeam.member_count ??
+                        0)
+                      : allTeamsMemberCount()}
+                  </Text>
+                  <Text style={styles.teamStatLabel}>
+                    {activeTeam ? "Members" : "Total Members"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Row 2 */}
+              <View style={styles.teamStatsRowInner}>
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="check-circle"
+                    size={18}
+                    color="#16A34A"
+                  />
+                  <Text style={styles.teamStatValue}>
+                    {activeTeam
+                      ? typeof activeTeam.online_member_count === "number"
+                        ? activeTeam.online_member_count
+                        : teamOnlineCount(activeTeam)
+                      : allTeamsOnlineCount()}
+                  </Text>
+                  <Text style={styles.teamStatLabel}>
+                    {activeTeam ? "Online" : "Total Online"}
+                  </Text>
+                </View>
+                <View style={styles.teamStatDivider} />
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="login"
+                    size={18}
+                    color="#0284C7"
+                  />
+                  <Text style={styles.teamStatValue}>
+                    {activeTeam
+                      ? typeof activeTeam.signed_in_member_count === "number"
+                        ? activeTeam.signed_in_member_count
+                        : teamSignedInCount(activeTeam)
+                      : allTeamsSignedInCount()}
+                  </Text>
+                  <Text style={styles.teamStatLabel}>
+                    {activeTeam ? "Signed In" : "Total Signed In"}
+                  </Text>
+                </View>
+                <View style={styles.teamStatDivider} />
+                <View style={styles.teamStatItem}>
+                  <MaterialCommunityIcons
+                    name="format-list-numbered"
+                    size={18}
+                    color="#475569"
+                  />
+                  <Text style={styles.teamStatValue}>
+                    {teamCount}/{MAX_TEAMS}
+                  </Text>
+                  <Text style={styles.teamStatLabel}>Slots</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Teams list */}
+            <View style={{ padding: 16 }}>
+              {teams.length === 0 ? (
+                <View style={styles.emptyBlock}>
+                  <MaterialCommunityIcons
+                    name="account-group-outline"
+                    size={42}
+                    color="#CBD5E1"
+                  />
+                  <Text style={styles.emptyText}>No teams yet</Text>
+                </View>
+              ) : (
+                (activeTeam ? [activeTeam] : sortedTeams).map((item) => {
+                  const isDeleting = deletingTeamId === item.id;
+                  const onlineCount =
+                    typeof item.online_member_count === "number"
+                      ? item.online_member_count
+                      : teamOnlineCount(item);
+                  const signedInCount =
+                    typeof item.signed_in_member_count === "number"
+                      ? item.signed_in_member_count
+                      : teamSignedInCount(item);
+
+                  return (
+                    <View key={String(item.id)} style={styles.row}>
+                      <TouchableOpacity
+                        style={styles.rowBody}
+                        activeOpacity={0.7}
+                        disabled={isDeleting}
+                        onPress={() =>
+                          router.push({
+                            pathname: "/admin/team/[id]",
+                            params: { id: item.id },
+                          })
+                        }
+                      >
+                        <View
+                          style={[
+                            styles.avatar,
+                            { backgroundColor: "#4F46E5" },
+                          ]}
+                        >
+                          <MaterialCommunityIcons
+                            name="account-group"
+                            size={24}
+                            color="#fff"
+                          />
+                        </View>
+                        <View style={styles.rowText}>
+                          <Text style={styles.rowName} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={styles.rowEmail} numberOfLines={1}>
+                            Code: {item.join_code}
+                          </Text>
+                          <Text style={styles.rowMeta} numberOfLines={1}>
+                            Created {item.created_at_label} •{" "}
+                            {item.member_count} members
+                          </Text>
+                          <View style={styles.pillRow}>
+                            <View style={styles.statusPill}>
+                              <View
+                                style={[
+                                  styles.statusDot,
+                                  { backgroundColor: "#16A34A" },
+                                ]}
+                              />
+                              <Text
+                                style={[
+                                  styles.statusPillText,
+                                  { color: "#16A34A" },
+                                ]}
+                              >
+                                {onlineCount} online
+                              </Text>
+                            </View>
+                            <View style={styles.statusPill}>
+                              <View
+                                style={[
+                                  styles.statusDot,
+                                  { backgroundColor: "#0284C7" },
+                                ]}
+                              />
+                              <Text
+                                style={[
+                                  styles.statusPillText,
+                                  { color: "#0284C7" },
+                                ]}
+                              >
+                                {signedInCount} signed in
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
+
+                      <View style={styles.actionsWrap}>
                         <TouchableOpacity
                           style={styles.trashBtn}
                           disabled={isDeleting}
-                          onPress={() => openDeleteModal("user", item)}
+                          onPress={() => openDeleteModal("team", item)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           {isDeleting ? (
@@ -604,132 +976,22 @@ export default function AdminPanel() {
                             />
                           )}
                         </TouchableOpacity>
-                      )}
-                      <Ionicons
-                        name="chevron-forward"
-                        size={22}
-                        color="#94A3B8"
-                      />
-                    </View>
-                  </View>
-                );
-              })
-            )
-          ) : teams.length === 0 ? (
-            <View style={styles.emptyBlock}>
-              <MaterialCommunityIcons
-                name="account-group-outline"
-                size={42}
-                color="#CBD5E1"
-              />
-              <Text style={styles.emptyText}>No teams yet</Text>
-            </View>
-          ) : (
-            teams.map((item) => {
-              const isDeleting = deletingTeamId === item.id;
-              return (
-                <View key={String(item.id)} style={styles.row}>
-                  <TouchableOpacity
-                    style={styles.rowBody}
-                    activeOpacity={0.7}
-                    disabled={isDeleting}
-                    onPress={() =>
-                      router.push({
-                        pathname: "/admin/team/[id]",
-                        params: { id: item.id },
-                      })
-                    }
-                  >
-                    <View
-                      style={[styles.avatar, { backgroundColor: "#4F46E5" }]}
-                    >
-                      <MaterialCommunityIcons
-                        name="account-group"
-                        size={24}
-                        color="#fff"
-                      />
-                    </View>
-                    <View style={styles.rowText}>
-                      <Text style={styles.rowName} numberOfLines={1}>
-                        {item.name}
-                      </Text>
-                      <Text style={styles.rowEmail} numberOfLines={1}>
-                        Code: {item.join_code}
-                      </Text>
-                      <Text style={styles.rowMeta} numberOfLines={1}>
-                        Created {item.created_at_label} • {item.member_count}{" "}
-                        members
-                      </Text>
-                      <View style={styles.pillRow}>
-                        <View style={styles.statusPill}>
-                          <View
-                            style={[
-                              styles.statusDot,
-                              { backgroundColor: "#16A34A" },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.statusPillText,
-                              { color: "#16A34A" },
-                            ]}
-                          >
-                            {item.online_member_count ?? 0} online
-                          </Text>
-                        </View>
-                        <View style={styles.statusPill}>
-                          <View
-                            style={[
-                              styles.statusDot,
-                              { backgroundColor: "#0284C7" },
-                            ]}
-                          />
-                          <Text
-                            style={[
-                              styles.statusPillText,
-                              { color: "#0284C7" },
-                            ]}
-                          >
-                            {item.signed_in_member_count ?? 0} signed in
-                          </Text>
-                        </View>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={22}
+                          color="#94A3B8"
+                        />
                       </View>
                     </View>
-                  </TouchableOpacity>
-
-                  <View style={styles.actionsWrap}>
-                    <TouchableOpacity
-                      style={styles.trashBtn}
-                      disabled={isDeleting}
-                      onPress={() => openDeleteModal("team", item)}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      {isDeleting ? (
-                        <ActivityIndicator size="small" color="#DC2626" />
-                      ) : (
-                        <Ionicons
-                          name="trash-outline"
-                          size={20}
-                          color="#DC2626"
-                        />
-                      )}
-                    </TouchableOpacity>
-                    <Ionicons
-                      name="chevron-forward"
-                      size={22}
-                      color="#94A3B8"
-                    />
-                  </View>
-                </View>
-              );
-            })
-          )}
-        </View>
+                  );
+                })
+              )}
+            </View>
+          </>
+        )}
       </ScrollView>
 
-      {/* ─────────────────────────────────────────────────────────────
-          DELETE CONFIRMATION MODAL
-      ───────────────────────────────────────────────────────────── */}
+      {/* ─── DELETE CONFIRMATION MODAL ─── */}
       <Modal
         visible={deleteModalVisible}
         animationType="fade"
@@ -817,6 +1079,7 @@ export default function AdminPanel() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
+
   pillRow: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -835,16 +1098,9 @@ const styles = StyleSheet.create({
     gap: 5,
     maxWidth: "100%",
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
+  statusPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
+
   headerTitle: {
     fontSize: 24,
     fontWeight: "800",
@@ -852,7 +1108,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // ✅ NEW: Stats Strip Styles
+  // User-tab stats (3 tiles)
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -867,26 +1123,64 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 4,
   },
-  statItem: {
-    flex: 1,
-    alignItems: "center",
-    gap: 2,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  statLabel: {
-    fontSize: 10,
-    fontWeight: "600",
-    color: "#64748B",
-  },
-  statDivider: {
-    width: 1,
-    height: 30,
+  statItem: { flex: 1, alignItems: "center", gap: 2 },
+  statValue: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
+  statLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+  statDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
+
+  // ── Team switcher & team stats (mirrors app/teams/index.tsx) ──
+  switcherContainer: { marginBottom: 10, marginTop: 6 },
+  switcherScroll: { gap: 10, paddingVertical: 10, paddingHorizontal: 4 },
+  teamPill: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
     backgroundColor: "#E2E8F0",
   },
+  teamPillActive: { backgroundColor: "#4F46E5" },
+  teamPillText: { fontSize: 14, fontWeight: "600", color: "#475569" },
+  teamPillTextActive: { color: "#fff" },
+  addTeamPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#EEF2FF",
+    borderWidth: 1,
+    borderColor: "#C7D2FE",
+  },
+  addTeamPillActive: {
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
+  },
+  addTeamPillText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#4F46E5",
+    marginLeft: 4,
+  },
+
+  teamStatsCard: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    marginBottom: 10,
+    gap: 8,
+    marginHorizontal: 16,
+  },
+  teamStatsRowInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  teamStatItem: { flex: 1, alignItems: "center", gap: 2 },
+  teamStatValue: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
+  teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
+  teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
 
   // PIN Input Styles
   pinInputWrapper: {
@@ -905,11 +1199,9 @@ const styles = StyleSheet.create({
     textAlign: "center",
     letterSpacing: 5,
   },
-  eyeIcon: {
-    padding: 5,
-  },
+  eyeIcon: { padding: 5 },
 
-  // FlatList Row Styles
+  // Row Styles
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -927,11 +1219,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 3,
   },
-  rowBody: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
+  rowBody: { flex: 1, flexDirection: "row", alignItems: "center" },
   avatar: {
     width: 46,
     height: 46,
@@ -944,7 +1232,12 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, minWidth: 0 },
   rowName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   rowEmail: { fontSize: 13, color: "#475569", marginTop: 1 },
-  rowMeta: { fontSize: 11, color: "#94A3B8", marginTop: 4, fontWeight: "600" },
+  rowMeta: {
+    fontSize: 11,
+    color: "#94A3B8",
+    marginTop: 4,
+    fontWeight: "600",
+  },
 
   actionsWrap: {
     flexDirection: "row",
@@ -989,10 +1282,7 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
-  modalHeader: {
-    alignItems: "center",
-    marginBottom: 16,
-  },
+  modalHeader: { alignItems: "center", marginBottom: 16 },
   modalTitle: {
     fontSize: 22,
     fontWeight: "800",
@@ -1031,10 +1321,7 @@ const styles = StyleSheet.create({
     color: "#0F172A",
     marginBottom: 24,
   },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-  },
+  modalActions: { flexDirection: "row", gap: 12 },
   modalBtnCancel: {
     flex: 1,
     padding: 14,
@@ -1042,11 +1329,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#F1F5F9",
     alignItems: "center",
   },
-  modalBtnCancelText: {
-    color: "#64748B",
-    fontWeight: "700",
-    fontSize: 15,
-  },
+  modalBtnCancelText: { color: "#64748B", fontWeight: "700", fontSize: 15 },
   modalBtnDelete: {
     flex: 1,
     padding: 14,
@@ -1054,9 +1337,5 @@ const styles = StyleSheet.create({
     backgroundColor: "#DC2626",
     alignItems: "center",
   },
-  modalBtnDeleteText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 15,
-  },
+  modalBtnDeleteText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
 });

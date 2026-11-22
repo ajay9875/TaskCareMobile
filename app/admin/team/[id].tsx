@@ -1,7 +1,7 @@
 // app/admin/team/[id].tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -60,6 +60,25 @@ function StatusPill({
   );
 }
 
+const AVATAR_COLORS = [
+  "#4F46E5",
+  "#0891B2",
+  "#16A34A",
+  "#D97706",
+  "#DB2777",
+  "#7C3AED",
+  "#0D9488",
+  "#EA580C",
+  "#2563EB",
+  "#9333EA",
+  "#65A30D",
+  "#E11D48",
+];
+
+function getAvatarColor(index: number): string {
+  return AVATAR_COLORS[index % AVATAR_COLORS.length];
+}
+
 export default function AdminTeamDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -92,6 +111,14 @@ export default function AdminTeamDetails() {
   useEffect(() => {
     fetchTeam();
   }, [fetchTeam]);
+
+  const sortedMembers = useMemo(() => {
+    return [...(team?.members || [])].sort((a: any, b: any) =>
+      (a.name || "").localeCompare(b.name || "", undefined, {
+        sensitivity: "base",
+      }),
+    );
+  }, [team?.members]);
 
   // Initial full-screen loading state
   if (loading && !team) {
@@ -140,7 +167,7 @@ export default function AdminTeamDetails() {
             </Text>
           </View>
         ) : (
-          team.members?.map((item: any) => (
+          sortedMembers.map((item: any, index: number) => (
             <TouchableOpacity
               key={item.user_id.toString()}
               style={styles.row}
@@ -151,7 +178,12 @@ export default function AdminTeamDetails() {
                 })
               }
             >
-              <View style={[styles.avatar, { backgroundColor: "#4F46E5" }]}>
+              <View
+                style={[
+                  styles.avatar,
+                  { backgroundColor: getAvatarColor(index) },
+                ]}
+              >
                 <Text style={{ color: "#fff", fontWeight: "bold" }}>
                   {item.name?.charAt(0)}
                 </Text>
@@ -195,7 +227,8 @@ const styles = StyleSheet.create({
   avatar: {
     width: 46,
     height: 46,
-    borderRadius: 23,
+    borderRadius: 100,
+    overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
     marginRight: 12,
