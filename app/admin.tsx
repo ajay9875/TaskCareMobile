@@ -36,7 +36,25 @@ function colorForUser(id: number): string {
   return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length];
 }
 
-// ── Presence helpers (identical logic to app/teams/index.tsx) ──
+function isSuperAdminUser(u: AdminUser): boolean {
+  const role = (u.role ?? "").toLowerCase();
+  return (
+    !!u.is_superadmin ||
+    !!u.is_super_admin ||
+    role === "superadmin" ||
+    role === "super_admin"
+  );
+}
+
+function isAdminUser(u: AdminUser): boolean {
+  return (
+    !!u.is_admin ||
+    isSuperAdminUser(u) ||
+    (u.role ?? "").toLowerCase() === "admin"
+  );
+}
+
+// ── Presence helpers ──
 function isOnlineMember(m: any): boolean {
   if (!m?.last_seen) return false;
   const raw: string = m.last_seen;
@@ -59,6 +77,7 @@ type AdminUser = {
   name: string;
   email: string;
   target_steps: number;
+  steps_today?: number;
   state: "online" | "offline" | "never" | "signed_out";
   last_seen: string | null;
   label: string;
@@ -66,7 +85,6 @@ type AdminUser = {
   last_status_change?: string | null;
   created_at_label?: string;
 
-  // Add these
   is_superadmin?: boolean;
   is_super_admin?: boolean;
   is_admin?: boolean;
@@ -133,6 +151,14 @@ function StatusPill({
   );
 }
 
+// 🏅 Medal emoji helper (rank 1–3 get a medal, others just "#N")
+function rankBadge(rank: number) {
+  if (rank === 1) return { text: "🥇 #1", style: styles.firstRank };
+  if (rank === 2) return { text: "🥈 #2", style: styles.secondRank };
+  if (rank === 3) return { text: "🥉 #3", style: styles.thirdRank };
+  return { text: `#${rank}`, style: styles.otherRank };
+}
+
 export default function AdminPanel() {
   const router = useRouter();
   const { user, isAdmin, isLoggedIn } = useAuth();
@@ -151,7 +177,6 @@ export default function AdminPanel() {
   const [isVerifying, setIsVerifying] = useState(false);
   const [activeTab, setActiveTab] = useState<"users" | "teams">("users");
 
-  // ✅ Selected team (same pattern as app/teams/index.tsx)
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
   // Delete Confirmation Modal State
@@ -184,37 +209,61 @@ export default function AdminPanel() {
     });
   }, [teams]);
 
+  // ─────────────────────────────────────────────────────────────
+  // 🏅 RANK MAP — computed by steps DESC across ALL users.
+  // ─────────────────────────────────────────────────────────────
+  const rankMap = useMemo(() => {
+    const map = new Map<number, number>();
+
+    const bySteps = [...users].sort(
+      (a, b) => (b.steps_today ?? 0) - (a.steps_today ?? 0),
+    );
+
+    let currentRank = 0;
+    let previousSteps: number | null = null;
+
+    bySteps.forEach((u, index) => {
+      const steps = u.steps_today ?? 0;
+
+      if (previousSteps === null || steps !== previousSteps) {
+        currentRank = index + 1;
+      }
+
+      map.set(u.id, currentRank);
+      previousSteps = steps;
+    });
+
+    return map;
+  }, [users]);
+
+  // ─────────────────────────────────────────────────────────────
+  // 🅰️ SORTED USERS
+  // 1. Logged-in User (You) at the very top
+  // 2. Other Super Admins / Admins
+  // 3. Remaining users alphabetically
+  // ─────────────────────────────────────────────────────────────
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
-      const aIsSuperAdmin =
-        a.is_superadmin ||
-        a.is_super_admin ||
-        a.role?.toLowerCase() === "superadmin" ||
-        a.role?.toLowerCase() === "super_admin";
+      const aIsYou = Number(user?.id) === Number(a.id);
+      const bIsYou = Number(user?.id) === Number(b.id);
 
-      const bIsSuperAdmin =
-        b.is_superadmin ||
-        b.is_super_admin ||
-        b.role?.toLowerCase() === "superadmin" ||
-        b.role?.toLowerCase() === "super_admin";
+      // 1. Pin yourself (the logged-in admin) to the top
+      if (aIsYou && !bIsYou) return -1;
+      if (!aIsYou && bIsYou) return 1;
 
-      const aIsAdmin = a.is_admin || a.role?.toLowerCase() === "admin";
-      const bIsAdmin = b.is_admin || b.role?.toLowerCase() === "admin";
+      // 2. Pin other Super Admins below you
+      const aIsSuperAdmin = isSuperAdminUser(a);
+      const bIsSuperAdmin = isSuperAdminUser(b);
 
-      // Super Admin always first
       if (aIsSuperAdmin && !bIsSuperAdmin) return -1;
       if (!aIsSuperAdmin && bIsSuperAdmin) return 1;
 
-      // Other admins next
-      if (aIsAdmin && !bIsAdmin) return -1;
-      if (!aIsAdmin && bIsAdmin) return 1;
-
-      // Remaining users alphabetically
+      // 3. Alphabetical for everyone else
       return (a.name || "").localeCompare(b.name || "", undefined, {
         sensitivity: "base",
       });
     });
-  }, [users]);
+  }, [users, user?.id]);
 
   // ── Global rollups ──
   function allTeamsOnlineCount(): number {
@@ -224,11 +273,10 @@ export default function AdminPanel() {
         if (isOnlineMember(m)) uniqueUsers.add(m.user_id);
       });
     });
-    return uniqueUsers.size; // De-duped
+    return uniqueUsers.size;
   }
 
   function allTeamsMemberCount(): number {
-    // Sum of all memberships (not de-duped) so it matches the list above
     return teams.reduce(
       (sum, t) => sum + (t.members?.length ?? t.member_count ?? 0),
       0,
@@ -242,13 +290,12 @@ export default function AdminPanel() {
         if (m.is_signed_in) uniqueUsers.add(m.user_id);
       });
     });
-    return uniqueUsers.size; // De-duped
+    return uniqueUsers.size;
   }
 
   const teamCount = teams.length;
   const adminTeamCount = teams.filter((t) => t.is_admin).length;
 
-  // User-tab stats (Users / Online / Signed In)
   const userStats = useMemo(() => {
     const totalUsers = users.length;
     const onlineUsers = users.filter((u) => u.state === "online").length;
@@ -256,9 +303,6 @@ export default function AdminPanel() {
     return { totalUsers, onlineUsers, signedInUsers };
   }, [users]);
 
-  // ─────────────────────────────────────────────────────────────
-  // OPEN DELETE MODAL
-  // ─────────────────────────────────────────────────────────────
   const openDeleteModal = (
     type: "user" | "team",
     item: AdminUser | AdminTeam,
@@ -284,9 +328,6 @@ export default function AdminPanel() {
     setDeleteModalVisible(true);
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // EXECUTE DELETE
-  // ─────────────────────────────────────────────────────────────
   const executeDelete = async () => {
     if (!deleteTarget || deleteConfirmText !== "DELETE") return;
 
@@ -357,9 +398,6 @@ export default function AdminPanel() {
     }
   };
 
-  // ─────────────────────────────────────────────────────────────
-  // PIN VERIFY + FETCH
-  // ─────────────────────────────────────────────────────────────
   const verifyPin = async () => {
     if (pin.length !== 6) return;
     setIsVerifying(true);
@@ -595,7 +633,6 @@ export default function AdminPanel() {
         {/* ── USERS TAB ── */}
         {activeTab === "users" && (
           <>
-            {/* 3-tile stats (Users / Online / Signed In) */}
             <View style={styles.statsRow}>
               <View style={styles.statItem}>
                 <MaterialCommunityIcons
@@ -641,7 +678,10 @@ export default function AdminPanel() {
               ) : (
                 sortedUsers.map((item) => {
                   const isDeleting = deletingUserId === item.id;
-                  const isSelf = user?.id === item.id;
+                  const isSelf = Number(user?.id) === Number(item.id);
+                  const rank = rankMap.get(item.id) ?? 0;
+                  const badge = rank > 0 ? rankBadge(rank) : null;
+
                   return (
                     <View key={String(item.id)} style={styles.row}>
                       <TouchableOpacity
@@ -660,17 +700,61 @@ export default function AdminPanel() {
                             {item.name?.charAt(0)?.toUpperCase() ?? "?"}
                           </Text>
                         </View>
+
                         <View style={styles.rowText}>
-                          <Text style={styles.rowName} numberOfLines={1}>
-                            {item.name}
-                          </Text>
+                          <View style={styles.userNameRow}>
+                            <Text style={styles.rowName} numberOfLines={1}>
+                              {item.name}
+                            </Text>
+
+                            {/* 👑 ADMIN BADGE — Shows if user is Admin / Super Admin */}
+                            {isAdminUser(item) && (
+                              <View style={styles.adminLabel}>
+                                <MaterialCommunityIcons
+                                  name="crown"
+                                  size={13}
+                                  color="#D97706"
+                                />
+                                <Text style={styles.adminLabelText}>
+                                  {isSuperAdminUser(item)
+                                    ? "Super Admin"
+                                    : "Admin"}
+                                </Text>
+                              </View>
+                            )}
+
+                            {/* ✅ YOU BADGE — Shows only for logged in user */}
+                            {isSelf && (
+                              <View style={styles.youLabel}>
+                                <Text style={styles.youLabelText}>You</Text>
+                              </View>
+                            )}
+                          </View>
+
                           <Text style={styles.rowEmail} numberOfLines={1}>
                             {item.email}
                           </Text>
+
+                          {/* 🏅 Rank + steps row */}
+                          <View style={styles.userRankRow}>
+                            {badge && (
+                              <View style={[styles.userRankBadge, badge.style]}>
+                                <Text style={styles.userRankText}>
+                                  {badge.text}
+                                </Text>
+                              </View>
+                            )}
+                            <Text style={styles.userStepsText}>
+                              {(item.steps_today ?? 0).toLocaleString()} steps
+                              today
+                            </Text>
+                          </View>
+
                           <Text style={styles.rowMeta} numberOfLines={1}>
                             Created {item.created_at_label ?? "—"} • ID #
                             {item.id}
                           </Text>
+
                           <StatusPill
                             state={item.state}
                             label={item.label}
@@ -712,10 +796,9 @@ export default function AdminPanel() {
           </>
         )}
 
-        {/* ── TEAMS TAB (mirrors app/teams/index.tsx) ── */}
+        {/* ── TEAMS TAB ── */}
         {activeTab === "teams" && (
           <>
-            {/* Horizontal Team Switcher */}
             <View style={styles.switcherContainer}>
               <ScrollView
                 horizontal
@@ -766,9 +849,7 @@ export default function AdminPanel() {
               </ScrollView>
             </View>
 
-            {/* ✅ Team stats strip — SAME STRUCTURE as app/teams/index.tsx */}
             <View style={styles.teamStatsCard}>
-              {/* Row 1 */}
               <View style={styles.teamStatsRowInner}>
                 <View style={styles.teamStatItem}>
                   <MaterialCommunityIcons
@@ -811,7 +892,6 @@ export default function AdminPanel() {
                 </View>
               </View>
 
-              {/* Row 2 */}
               <View style={styles.teamStatsRowInner}>
                 <View style={styles.teamStatItem}>
                   <MaterialCommunityIcons
@@ -863,7 +943,6 @@ export default function AdminPanel() {
               </View>
             </View>
 
-            {/* Teams list */}
             <View style={{ padding: 16 }}>
               {teams.length === 0 ? (
                 <View style={styles.emptyBlock}>
@@ -1108,7 +1187,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
 
-  // User-tab stats (3 tiles)
   statsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1128,7 +1206,6 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
   statDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
 
-  // ── Team switcher & team stats (mirrors app/teams/index.tsx) ──
   switcherContainer: { marginBottom: 10, marginTop: 6 },
   switcherScroll: { gap: 10, paddingVertical: 10, paddingHorizontal: 4 },
   teamPill: {
@@ -1182,7 +1259,48 @@ const styles = StyleSheet.create({
   teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
   teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
 
-  // PIN Input Styles
+  // Rank badge row (Users tab)
+  userRankRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+    marginBottom: 2,
+    flexWrap: "wrap",
+  },
+  userRankBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  firstRank: {
+    backgroundColor: "#DBEAFE",
+    borderColor: "#93C5FD",
+  },
+  secondRank: {
+    backgroundColor: "#EDE9FE",
+    borderColor: "#C4B5FD",
+  },
+  thirdRank: {
+    backgroundColor: "#CFFAFE",
+    borderColor: "#67E8F9",
+  },
+  otherRank: {
+    backgroundColor: "#EEF2FF",
+    borderColor: "#C7D2FE",
+  },
+  userRankText: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#3730A3",
+  },
+  userStepsText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#64748B",
+  },
+
   pinInputWrapper: {
     flexDirection: "row",
     alignItems: "center",
@@ -1201,7 +1319,6 @@ const styles = StyleSheet.create({
   },
   eyeIcon: { padding: 5 },
 
-  // Row Styles
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -1239,6 +1356,38 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  userNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  adminLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    gap: 3,
+  },
+  adminLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#92400E",
+  },
+  youLabel: {
+    backgroundColor: "#DCFCE7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  youLabelText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#15803D",
+  },
+
   actionsWrap: {
     flexDirection: "row",
     alignItems: "center",
@@ -1262,7 +1411,6 @@ const styles = StyleSheet.create({
   },
   emptyText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
 
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",
