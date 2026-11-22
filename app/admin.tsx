@@ -36,6 +36,7 @@ function colorForUser(id: number): string {
   return AVATAR_COLORS[Math.abs(id) % AVATAR_COLORS.length];
 }
 
+// ── ROLE HELPERS (Strictly Super Admin / Admin only) ──
 function isSuperAdminUser(u: AdminUser): boolean {
   const role = (u.role ?? "").toLowerCase();
   return (
@@ -47,11 +48,8 @@ function isSuperAdminUser(u: AdminUser): boolean {
 }
 
 function isAdminUser(u: AdminUser): boolean {
-  return (
-    !!u.is_admin ||
-    isSuperAdminUser(u) ||
-    (u.role ?? "").toLowerCase() === "admin"
-  );
+  const role = (u.role ?? "").toLowerCase();
+  return !!u.is_admin || isSuperAdminUser(u) || role === "admin";
 }
 
 // ── Presence helpers ──
@@ -239,7 +237,7 @@ export default function AdminPanel() {
   // ─────────────────────────────────────────────────────────────
   // 🅰️ SORTED USERS
   // 1. Logged-in User (You) at the very top
-  // 2. Other Super Admins / Admins
+  // 2. Other Super Admins
   // 3. Remaining users alphabetically
   // ─────────────────────────────────────────────────────────────
   const sortedUsers = useMemo(() => {
@@ -707,7 +705,7 @@ export default function AdminPanel() {
                               {item.name}
                             </Text>
 
-                            {/* 👑 ADMIN BADGE — Shows if user is Admin / Super Admin */}
+                            {/* 👑 ADMIN BADGE — Only Super Admin / Admin */}
                             {isAdminUser(item) && (
                               <View style={styles.adminLabel}>
                                 <MaterialCommunityIcons
