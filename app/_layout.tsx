@@ -7,6 +7,8 @@ import { Stack, useRouter } from "expo-router";
 import * as ExpoSplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
+import { getActiveChatTeam } from "../utils/chatPresence";
+
 import {
   ActivityIndicator,
   Alert,
@@ -46,12 +48,18 @@ if (!isExpoGo) {
   try {
     Notifications = require("expo-notifications");
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowBanner: true,
-        shouldShowList: true,
-        shouldPlaySound: true,
-        shouldSetBadge: false,
-      }),
+      handleNotification: async (notification: any) => {
+        const data = notification?.request?.content?.data ?? {};
+        const viewingThisChat =
+          data.screen === "team-chat" &&
+          Number(data.team_id) === getActiveChatTeam();
+        return {
+          shouldShowBanner: !viewingThisChat,
+          shouldShowList: !viewingThisChat,
+          shouldPlaySound: !viewingThisChat,
+          shouldSetBadge: false,
+        };
+      },
     });
   } catch (e) {
     Notifications = null;
@@ -62,6 +70,8 @@ function MainLayout() {
   const router = useRouter();
   const routerRef = useRef(router);
   routerRef.current = router;
+
+  const isReadyRef = useRef(false);
 
   const { user, isLoggedIn, isAdmin, setUser, checkSession, clearSession } =
     useAuth();
@@ -77,7 +87,21 @@ function MainLayout() {
   const [loggingOut, setLoggingOut] = useState(false); // ← add this
   const [showBudgetPromo, setShowBudgetPromo] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  
+
+  isReadyRef.current = isAppReady;
+
+  const openFromNotification = (data: any) => {
+    if (!data) return;
+    if (data.screen === "steps") {
+      routerRef.current.push("/steps");
+    } else if (data.screen === "team-chat" && data.team_id) {
+      routerRef.current.push({
+        pathname: "/teams/chat/[id]",
+        params: { id: String(data.team_id) },
+      });
+    }
+  };
+
   // Inside MainLayout:
   useEffect(() => {
     const handleDeepLink = ({ url }: { url: string }) => {
@@ -100,20 +124,14 @@ function MainLayout() {
   }, []);
 
   useEffect(() => {
-    if (!Notifications) return;
-    const handleInitialNotification = async () => {
-      try {
-        const response = await Notifications.getLastNotificationResponseAsync();
-        if (!response) return;
-        const screen = response.notification.request.content.data?.screen;
-        if (screen === "steps")
-          setTimeout(() => routerRef.current.push("/steps"), 500);
-        if (Notifications.clearLastNotificationResponseAsync)
-          await Notifications.clearLastNotificationResponseAsync();
-      } catch (e) {}
-    };
-    handleInitialNotification();
-  }, []);
+    if (!Notifications || !isAppReady) return;
+    (async () => {
+      const response = await Notifications.getLastNotificationResponseAsync();
+      if (!response) return;
+      openFromNotification(response.notification.request.content.data);
+      await Notifications.clearLastNotificationResponseAsync?.();
+    })().catch(() => {});
+  }, [isAppReady]);
 
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next) => {
@@ -124,8 +142,8 @@ function MainLayout() {
       try {
         notifSub = Notifications.addNotificationResponseReceivedListener(
           (response: any) => {
-            const screen = response.notification.request.content.data?.screen;
-            if (screen === "steps") routerRef.current.push("/steps");
+            if (!isReadyRef.current) return; // cold-start effect handles this
+            openFromNotification(response.notification.request.content.data);
           },
         );
       } catch (e) {}
@@ -176,63 +194,63 @@ function MainLayout() {
   };
 
   const confirmLogout = async () => {
-  setShowLogoutConfirm(false);
-  setLoggingOut(true);
+    setShowLogoutConfirm(false);
+    setLoggingOut(true);
 
-  const startTime = Date.now();
+    const startTime = Date.now();
 
-  try {
-    // 1. Stop the native step tracker
     try {
-      await stopStepTracker();
-    } catch (e) {
-      console.log("[logout] stopStepTracker failed:", e);
+      // 1. Stop the native step tracker
+      try {
+        await stopStepTracker();
+      } catch (e) {
+        console.log("[logout] stopStepTracker failed:", e);
+      }
+
+      // 2. Log out from the server
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        await fetch(`${API_BASE}/logout`, {
+          method: "POST",
+          credentials: "include",
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+      } catch (e) {
+        console.log("[logout] server logout failed:", e);
+      }
+
+      // 3. Clear local storage
+      try {
+        await AsyncStorage.multiRemove([
+          "@taskcare360_cached_target",
+          "@taskcare360_treadmill_mode",
+          "@taskcare360_battery_prompt_shown",
+          "@taskcare360_just_reloaded",
+        ]);
+      } catch (e) {
+        console.log("[logout] AsyncStorage cleanup failed:", e);
+      }
+
+      // 4. Clear authentication
+      clearSession();
+
+      // 5. Verify session
+      await checkSession();
+    } finally {
+      // 6. Maintain minimum loading duration
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = Math.max(0, 2000 - elapsedTime);
+
+      setTimeout(() => {
+        setLoggingOut(false);
+        router.replace("/login?loggedOut=true");
+      }, remainingTime);
     }
-
-    // 2. Log out from the server
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      await fetch(`${API_BASE}/logout`, {
-        method: "POST",
-        credentials: "include",
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-    } catch (e) {
-      console.log("[logout] server logout failed:", e);
-    }
-
-    // 3. Clear local storage
-    try {
-      await AsyncStorage.multiRemove([
-        "@taskcare360_cached_target",
-        "@taskcare360_treadmill_mode",
-        "@taskcare360_battery_prompt_shown",
-        "@taskcare360_just_reloaded",
-      ]);
-    } catch (e) {
-      console.log("[logout] AsyncStorage cleanup failed:", e);
-    }
-
-    // 4. Clear authentication
-    clearSession();
-
-    // 5. Verify session
-    await checkSession();
-  } finally {
-    // 6. Maintain minimum loading duration
-    const elapsedTime = Date.now() - startTime;
-    const remainingTime = Math.max(0, 2000 - elapsedTime);
-
-    setTimeout(() => {
-      setLoggingOut(false);
-      router.replace("/login?loggedOut=true");
-    }, remainingTime);
-  }
-};
+  };
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editEmail.trim()) {
@@ -358,6 +376,10 @@ function MainLayout() {
           <Stack.Screen name="admin/team/[id]" />
           <Stack.Screen name="teams/index" />
           <Stack.Screen name="teams/member/[id]" />
+          <Stack.Screen
+            name="teams/chat/[id]"
+            options={{ headerShown: false }}
+          />
         </Stack>
 
         <View style={styles.footer}>
@@ -544,115 +566,111 @@ function MainLayout() {
       </Modal>
 
       {/* Custom step-by-step sign-out confirmation */}
-<Modal
-  visible={showLogoutConfirm}
-  transparent
-  animationType="fade"
-  onRequestClose={() => setShowLogoutConfirm(false)}
->
-  <View style={styles.logoutModalOverlay}>
-    <View style={styles.logoutDialog}>
-      <View style={styles.logoutIconCircle}>
-        <MaterialCommunityIcons
-          name="walk"
-          size={30}
-          color="#D97706"
-        />
-      </View>
+      <Modal
+        visible={showLogoutConfirm}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogoutConfirm(false)}
+      >
+        <View style={styles.logoutModalOverlay}>
+          <View style={styles.logoutDialog}>
+            <View style={styles.logoutIconCircle}>
+              <MaterialCommunityIcons name="walk" size={30} color="#D97706" />
+            </View>
 
-      <Text style={styles.logoutTitle}>Before You Sign Out</Text>
+            <Text style={styles.logoutTitle}>Before You Sign Out</Text>
 
-      <Text style={styles.logoutSubtitle}>
-        Please review these important steps to protect your fitness progress.
-      </Text>
+            <Text style={styles.logoutSubtitle}>
+              Please review these important steps to protect your fitness
+              progress.
+            </Text>
 
-      {/* Step 1 */}
-      <View style={styles.logoutStepRow}>
-        <View style={styles.logoutStepNumber}>
-          <Text style={styles.logoutStepNumberText}>1</Text>
+            {/* Step 1 */}
+            <View style={styles.logoutStepRow}>
+              <View style={styles.logoutStepNumber}>
+                <Text style={styles.logoutStepNumberText}>1</Text>
+              </View>
+
+              <View style={styles.logoutStepContent}>
+                <Text style={styles.logoutStepTitle}>Sync your steps</Text>
+                <Text style={styles.logoutStepDescription}>
+                  Open the Fitness Tracker screen and wait at least 10 seconds
+                  to allow your latest steps to sync to the cloud before signing
+                  out.
+                </Text>
+              </View>
+            </View>
+
+            {/* Step 2 */}
+            <View style={styles.logoutStepRow}>
+              <View style={styles.logoutStepNumber}>
+                <Text style={styles.logoutStepNumberText}>2</Text>
+              </View>
+
+              <View style={styles.logoutStepContent}>
+                <Text style={styles.logoutStepTitle}>Tracking will stop</Text>
+                <Text style={styles.logoutStepDescription}>
+                  FitWisely will stop tracking steps when you sign out.
+                </Text>
+              </View>
+            </View>
+
+            {/* Step 3 */}
+            <View style={[styles.logoutStepRow, styles.logoutLastStep]}>
+              <View style={styles.logoutStepNumber}>
+                <Text style={styles.logoutStepNumberText}>3</Text>
+              </View>
+
+              <View style={styles.logoutStepContent}>
+                <Text style={styles.logoutStepTitle}>
+                  Steps won't sync while signed out
+                </Text>
+                <Text style={styles.logoutStepDescription}>
+                  Steps taken while you are logged out will not be saved to your
+                  account automatically.
+                </Text>
+              </View>
+            </View>
+
+            {/* Warning */}
+            <View style={styles.logoutWarning}>
+              <MaterialCommunityIcons
+                name="alert-circle-outline"
+                size={19}
+                color="#B45309"
+              />
+
+              <Text style={styles.logoutWarningText}>
+                Make sure your steps are synced before continuing.
+              </Text>
+            </View>
+
+            {/* Buttons */}
+            <View style={styles.logoutActions}>
+              <TouchableOpacity
+                style={styles.logoutCancelButton}
+                onPress={() => setShowLogoutConfirm(false)}
+              >
+                <Text style={styles.logoutCancelText}>Stay Logged In</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.logoutConfirmButton}
+                onPress={confirmLogout}
+              >
+                <MaterialCommunityIcons
+                  name="logout"
+                  size={17}
+                  color="#FFFFFF"
+                  style={{ marginRight: 7 }}
+                />
+
+                <Text style={styles.logoutConfirmText}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-
-        <View style={styles.logoutStepContent}>
-          <Text style={styles.logoutStepTitle}>Sync your steps</Text>
-          <Text style={styles.logoutStepDescription}>
-            Open the Fitness Tracker screen and wait at least 10 seconds to allow your latest steps to sync to the cloud before signing out.
-          </Text>
-        </View>
-      </View>
-
-      {/* Step 2 */}
-      <View style={styles.logoutStepRow}>
-        <View style={styles.logoutStepNumber}>
-          <Text style={styles.logoutStepNumberText}>2</Text>
-        </View>
-
-        <View style={styles.logoutStepContent}>
-          <Text style={styles.logoutStepTitle}>Tracking will stop</Text>
-          <Text style={styles.logoutStepDescription}>
-            FitWisely will stop tracking steps when you sign out.
-          </Text>
-        </View>
-      </View>
-
-      {/* Step 3 */}
-      <View style={[styles.logoutStepRow, styles.logoutLastStep]}>
-        <View style={styles.logoutStepNumber}>
-          <Text style={styles.logoutStepNumberText}>3</Text>
-        </View>
-
-        <View style={styles.logoutStepContent}>
-          <Text style={styles.logoutStepTitle}>
-            Steps won't sync while signed out
-          </Text>
-          <Text style={styles.logoutStepDescription}>
-            Steps taken while you are logged out will not be saved to your account automatically.
-          </Text>
-        </View>
-      </View>
-
-      {/* Warning */}
-      <View style={styles.logoutWarning}>
-        <MaterialCommunityIcons
-          name="alert-circle-outline"
-          size={19}
-          color="#B45309"
-        />
-
-        <Text style={styles.logoutWarningText}>
-          Make sure your steps are synced before continuing.
-        </Text>
-      </View>
-
-      {/* Buttons */}
-      <View style={styles.logoutActions}>
-        <TouchableOpacity
-          style={styles.logoutCancelButton}
-          onPress={() => setShowLogoutConfirm(false)}
-        >
-          <Text style={styles.logoutCancelText}>
-            Stay Logged In
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.logoutConfirmButton}
-          onPress={confirmLogout}
-        >
-          <MaterialCommunityIcons
-            name="logout"
-            size={17}
-            color="#FFFFFF"
-            style={{ marginRight: 7 }}
-          />
-
-          <Text style={styles.logoutConfirmText}>
-            Sign Out
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </View>
-</Modal>
+      </Modal>
 
       {/* ✅ EDIT PROFILE MODAL */}
       <Modal visible={isEditModalVisible} animationType="fade" transparent>
@@ -875,156 +893,156 @@ export default function Layout() {
 
 const styles = StyleSheet.create({
   logoutModalOverlay: {
-  flex: 1,
-  backgroundColor: "rgba(15, 23, 42, 0.68)",
-  justifyContent: "center",
-  alignItems: "center",
-  paddingHorizontal: 20,
-},
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.68)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
+  },
 
-logoutDialog: {
-  width: "100%",
-  maxWidth: 430,
-  backgroundColor: "#FFFFFF",
-  borderRadius: 24,
-  padding: 22,
-  elevation: 12,
-  shadowColor: "#000000",
-  shadowOffset: { width: 0, height: 8 },
-  shadowOpacity: 0.18,
-  shadowRadius: 18,
-},
+  logoutDialog: {
+    width: "100%",
+    maxWidth: 430,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    padding: 22,
+    elevation: 12,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 18,
+  },
 
-logoutIconCircle: {
-  width: 58,
-  height: 58,
-  borderRadius: 29,
-  backgroundColor: "#FEF3C7",
-  alignItems: "center",
-  justifyContent: "center",
-  alignSelf: "center",
-  marginBottom: 14,
-},
+  logoutIconCircle: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginBottom: 14,
+  },
 
-logoutTitle: {
-  fontSize: 21,
-  fontWeight: "800",
-  color: "#0F172A",
-  textAlign: "center",
-  marginBottom: 7,
-},
+  logoutTitle: {
+    fontSize: 21,
+    fontWeight: "800",
+    color: "#0F172A",
+    textAlign: "center",
+    marginBottom: 7,
+  },
 
-logoutSubtitle: {
-  fontSize: 13,
-  lineHeight: 19,
-  color: "#64748B",
-  textAlign: "center",
-  marginBottom: 20,
-},
+  logoutSubtitle: {
+    fontSize: 13,
+    lineHeight: 19,
+    color: "#64748B",
+    textAlign: "center",
+    marginBottom: 20,
+  },
 
-logoutStepRow: {
-  flexDirection: "row",
-  alignItems: "flex-start",
-  paddingVertical: 11,
-  borderBottomWidth: 1,
-  borderBottomColor: "#F1F5F9",
-},
+  logoutStepRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1F5F9",
+  },
 
-logoutLastStep: {
-  borderBottomWidth: 0,
-  paddingBottom: 8,
-},
+  logoutLastStep: {
+    borderBottomWidth: 0,
+    paddingBottom: 8,
+  },
 
-logoutStepNumber: {
-  width: 28,
-  height: 28,
-  borderRadius: 14,
-  backgroundColor: "#E0F2FE",
-  alignItems: "center",
-  justifyContent: "center",
-  marginRight: 12,
-},
+  logoutStepNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#E0F2FE",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
 
-logoutStepNumberText: {
-  color: "#0369A1",
-  fontSize: 13,
-  fontWeight: "800",
-},
+  logoutStepNumberText: {
+    color: "#0369A1",
+    fontSize: 13,
+    fontWeight: "800",
+  },
 
-logoutStepContent: {
-  flex: 1,
-  paddingTop: 1,
-},
+  logoutStepContent: {
+    flex: 1,
+    paddingTop: 1,
+  },
 
-logoutStepTitle: {
-  color: "#1E293B",
-  fontSize: 14,
-  fontWeight: "700",
-  marginBottom: 3,
-},
+  logoutStepTitle: {
+    color: "#1E293B",
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 3,
+  },
 
-logoutStepDescription: {
-  color: "#64748B",
-  fontSize: 12,
-  lineHeight: 18,
-},
+  logoutStepDescription: {
+    color: "#64748B",
+    fontSize: 12,
+    lineHeight: 18,
+  },
 
-logoutWarning: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#FFFBEB",
-  borderColor: "#FDE68A",
-  borderWidth: 1,
-  borderRadius: 12,
-  padding: 11,
-  marginTop: 12,
-  marginBottom: 18,
-},
+  logoutWarning: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    borderColor: "#FDE68A",
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 11,
+    marginTop: 12,
+    marginBottom: 18,
+  },
 
-logoutWarningText: {
-  flex: 1,
-  color: "#92400E",
-  fontSize: 12,
-  fontWeight: "600",
-  lineHeight: 17,
-  marginLeft: 8,
-},
+  logoutWarningText: {
+    flex: 1,
+    color: "#92400E",
+    fontSize: 12,
+    fontWeight: "600",
+    lineHeight: 17,
+    marginLeft: 8,
+  },
 
-logoutActions: {
-  flexDirection: "row",
-  gap: 10,
-},
+  logoutActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
 
-logoutCancelButton: {
-  flex: 1,
-  paddingVertical: 13,
-  borderRadius: 12,
-  backgroundColor: "#F1F5F9",
-  alignItems: "center",
-  justifyContent: "center",
-},
+  logoutCancelButton: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#F1F5F9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-logoutCancelText: {
-  color: "#334155",
-  fontSize: 13,
-  fontWeight: "700",
-},
+  logoutCancelText: {
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "700",
+  },
 
-logoutConfirmButton: {
-  flex: 1,
-  flexDirection: "row",
-  paddingVertical: 13,
-  borderRadius: 12,
-  backgroundColor: "#DC2626",
-  alignItems: "center",
-  justifyContent: "center",
-},
+  logoutConfirmButton: {
+    flex: 1,
+    flexDirection: "row",
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-logoutConfirmText: {
-  color: "#FFFFFF",
-  fontSize: 13,
-  fontWeight: "700",
-},
+  logoutConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
   headerContainer: {
     flexDirection: "row",
     alignItems: "center",

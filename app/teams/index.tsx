@@ -350,6 +350,50 @@ export default function MyTeamScreen() {
     setDeleteModalVisible(true);
   };
 
+  const [isTransferring, setIsTransferring] = useState(false);
+
+  const handleTransferAdmin = (userId: number, userName: string) => {
+    Alert.alert(
+      "Transfer Admin Role?",
+      `${userName} will become the new team admin. You will be demoted to a regular member.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Confirm",
+          style: "destructive",
+          onPress: async () => {
+            setIsTransferring(true);
+            try {
+              const res = await fetch(`${API_BASE}/teams/transfer-admin`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({
+                  team_id: activeTeam?.id,
+                  user_id: userId,
+                }),
+              });
+              const data = await res.json().catch(() => ({}));
+              if (res.ok) {
+                Alert.alert("Success", `${userName} is now the team admin.`);
+                await fetchTeams();
+              } else {
+                Alert.alert(
+                  "Error",
+                  data.error || data.message || "Failed to transfer admin role",
+                );
+              }
+            } catch {
+              Alert.alert("Error", "Network error");
+            } finally {
+              setIsTransferring(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const executeDeleteMember = async () => {
     if (!memberToDelete || deleteConfirmText !== "DELETE") return;
     setIsDeleting(true);
@@ -783,16 +827,51 @@ export default function MyTeamScreen() {
                 </TouchableOpacity>
               )}
             </View>
-            {activeTeam.is_admin && (
-              <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {/* 💬 Team Chat — available to all members */}
+              <TouchableOpacity
+                style={styles.chatBtn}
+                onPress={() => {
+                  console.log("TEAM ID:", activeTeam.id);
+                  console.log("TEAM ID TYPE:", typeof activeTeam.id);
+
+                  if (
+                    !activeTeam?.id ||
+                    !Number.isInteger(Number(activeTeam.id))
+                  ) {
+                    Alert.alert(
+                      "Error",
+                      "Invalid team ID. Please select a team again.",
+                    );
+                    return;
+                  }
+
+                  router.push({
+                    pathname: "/teams/chat/[idx]",
+                    params: {
+                      id: String(activeTeam.id),
+                      name: activeTeam.name,
+                    },
+                  });
+                }}
+              >
                 <MaterialCommunityIcons
-                  name="share-variant"
+                  name="chat-outline"
                   size={20}
                   color="#fff"
                 />
-                <Text style={{ color: "#fff", marginLeft: 5 }}>Invite</Text>
+                <Text style={{ color: "#fff", marginLeft: 5 }}>Chat</Text>
               </TouchableOpacity>
-            )}
+
+                <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+                  <MaterialCommunityIcons
+                    name="share-variant"
+                    size={20}
+                    color="#fff"
+                  />
+                  <Text style={{ color: "#fff", marginLeft: 5 }}>Invite</Text>
+                </TouchableOpacity>
+            </View>
           </View>
 
           <Text style={styles.subtitle}>Leaderboard</Text>
@@ -906,7 +985,26 @@ export default function MyTeamScreen() {
                     <Text style={styles.stepsLabel}>steps</Text>
                   </View>
 
-                  {activeTeam.is_admin && !isMe && (
+                  {/* 👑 Transfer admin — only visible to the current team admin, on non-admin members */}
+                  {activeTeam.is_admin && !isMe && !isAdmin && (
+                    <TouchableOpacity
+                      style={styles.makeAdminBtn}
+                      disabled={isTransferring}
+                      onPress={() =>
+                        handleTransferAdmin(item.user_id, item.name)
+                      }
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <MaterialCommunityIcons
+                        name="crown-outline"
+                        size={18}
+                        color="#0284C7"
+                      />
+                    </TouchableOpacity>
+                  )}
+
+                  {/* 🗑️ Trash — team admin can remove non-admin members */}
+                  {activeTeam.is_admin && !isMe && !isAdmin && (
                     <TouchableOpacity
                       style={styles.trashBtn}
                       onPress={() => openDeleteModal(item.user_id, item.name)}
@@ -918,7 +1016,6 @@ export default function MyTeamScreen() {
                       />
                     </TouchableOpacity>
                   )}
-
                   <TouchableOpacity
                     onPress={openMemberHistory}
                     activeOpacity={0.6}
@@ -1361,6 +1458,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
+  chatBtn: {
+    flexDirection: "row",
+    backgroundColor: "#0284C7",
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignItems: "center",
+  },
+
   // List row
   row: {
     flexDirection: "row",
@@ -1401,6 +1507,15 @@ const styles = StyleSheet.create({
     height: 30,
     borderRadius: 8,
     backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 6,
+  },
+  makeAdminBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    backgroundColor: "#E0F2FE",
     alignItems: "center",
     justifyContent: "center",
     marginRight: 6,

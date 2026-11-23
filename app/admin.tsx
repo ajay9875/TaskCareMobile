@@ -157,6 +157,17 @@ export default function AdminPanel() {
   const [teams, setTeams] = useState<AdminTeam[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Add-to-team modal
+  const [addToTeamVisible, setAddToTeamVisible] = useState(false);
+  const [addToTeamUser, setAddToTeamUser] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
+  const [addToTeamSelected, setAddToTeamSelected] = useState<number | null>(
+    null,
+  );
+  const [isAddingToTeam, setIsAddingToTeam] = useState(false);
+
   const [deletingUserId, setDeletingUserId] = useState<number | null>(null);
   const [deletingTeamId, setDeletingTeamId] = useState<number | null>(null);
 
@@ -358,6 +369,47 @@ export default function AdminPanel() {
       } finally {
         setDeletingTeamId(null);
       }
+    }
+  };
+
+  const openAddToTeam = (userId: number, userName: string) => {
+    setAddToTeamUser({ id: userId, name: userName });
+    setAddToTeamSelected(null);
+    setAddToTeamVisible(true);
+  };
+
+  const executeAddToTeam = async () => {
+    if (!addToTeamUser || !addToTeamSelected) return;
+    setIsAddingToTeam(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/superadmin/teams/${addToTeamSelected}/members`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ user_id: addToTeamUser.id }),
+        },
+      );
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        Alert.alert(
+          "Added",
+          `${addToTeamUser.name} added to the selected team.`,
+        );
+        setAddToTeamVisible(false);
+        fetchData(); // refresh both lists
+      } else {
+        Alert.alert(
+          "Error",
+          data.error || data.message || "Failed to add user to team",
+        );
+      }
+    } catch {
+      Alert.alert("Error", "Network error");
+    } finally {
+      setIsAddingToTeam(false);
     }
   };
 
@@ -719,22 +771,42 @@ export default function AdminPanel() {
 
                       <View style={styles.actionsWrap}>
                         {!isSelf && (
-                          <TouchableOpacity
-                            style={styles.trashBtn}
-                            disabled={isDeleting}
-                            onPress={() => openDeleteModal("user", item)}
-                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          >
-                            {isDeleting ? (
-                              <ActivityIndicator size="small" color="#DC2626" />
-                            ) : (
+                          <>
+                            {/* ➕ Add to Team */}
+                            <TouchableOpacity
+                              style={styles.addTeamBtn}
+                              disabled={isDeleting}
+                              onPress={() => openAddToTeam(item.id, item.name)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
                               <Ionicons
-                                name="trash-outline"
+                                name="add-circle-outline"
                                 size={20}
-                                color="#DC2626"
+                                color="#0284C7"
                               />
-                            )}
-                          </TouchableOpacity>
+                            </TouchableOpacity>
+
+                            {/* 🗑️ Delete user */}
+                            <TouchableOpacity
+                              style={styles.trashBtn}
+                              disabled={isDeleting}
+                              onPress={() => openDeleteModal("user", item)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            >
+                              {isDeleting ? (
+                                <ActivityIndicator
+                                  size="small"
+                                  color="#DC2626"
+                                />
+                              ) : (
+                                <Ionicons
+                                  name="trash-outline"
+                                  size={20}
+                                  color="#DC2626"
+                                />
+                              )}
+                            </TouchableOpacity>
+                          </>
                         )}
                         <Ionicons
                           name="chevron-forward"
@@ -1023,6 +1095,109 @@ export default function AdminPanel() {
           </>
         )}
       </ScrollView>
+
+      {/* ─── ADD TO TEAM MODAL ─── */}
+      <Modal
+        visible={addToTeamVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setAddToTeamVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <MaterialCommunityIcons
+                name="account-plus"
+                size={36}
+                color="#0284C7"
+              />
+              <Text style={styles.modalTitle}>Add to Team</Text>
+            </View>
+            <Text style={styles.modalBody}>
+              Add{" "}
+              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
+                {addToTeamUser?.name}
+              </Text>{" "}
+              to a team:
+            </Text>
+
+            <ScrollView
+              style={{ maxHeight: 260, marginVertical: 12 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {sortedTeams.length === 0 ? (
+                <Text
+                  style={{
+                    textAlign: "center",
+                    color: "#94A3B8",
+                    paddingVertical: 20,
+                  }}
+                >
+                  No teams available
+                </Text>
+              ) : (
+                sortedTeams.map((t) => {
+                  const selected = addToTeamSelected === t.id;
+                  return (
+                    <TouchableOpacity
+                      key={t.id}
+                      onPress={() => setAddToTeamSelected(t.id)}
+                      activeOpacity={0.75}
+                      style={[
+                        styles.teamSelectRow,
+                        selected && styles.teamSelectRowActive,
+                      ]}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.teamSelectName} numberOfLines={1}>
+                          {t.name}
+                        </Text>
+                        <Text style={styles.teamSelectMeta}>
+                          {t.member_count} member
+                          {t.member_count === 1 ? "" : "s"} • Code:{" "}
+                          {t.join_code}
+                        </Text>
+                      </View>
+                      {selected && (
+                        <Ionicons
+                          name="checkmark-circle"
+                          size={22}
+                          color="#0284C7"
+                        />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalBtnCancel}
+                onPress={() => setAddToTeamVisible(false)}
+              >
+                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtnSave,
+                  (!addToTeamSelected || isAddingToTeam) && {
+                    backgroundColor: "#7DD3FC",
+                  },
+                ]}
+                disabled={!addToTeamSelected || isAddingToTeam}
+                onPress={executeAddToTeam}
+              >
+                {isAddingToTeam ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalBtnSaveText}>Add</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ─── DELETE CONFIRMATION MODAL ─── */}
       <Modal
@@ -1326,6 +1501,49 @@ const styles = StyleSheet.create({
     height: 34,
     borderRadius: 10,
     backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  teamSelectRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    backgroundColor: "#F8FAFC",
+    marginBottom: 8,
+  },
+  teamSelectRowActive: {
+    borderColor: "#0284C7",
+    backgroundColor: "#E0F2FE",
+  },
+  teamSelectName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0F172A",
+  },
+  teamSelectMeta: {
+    fontSize: 11,
+    color: "#64748B",
+    marginTop: 2,
+  },
+  modalBtnSave: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 12,
+    backgroundColor: "#0284C7",
+    alignItems: "center",
+  },
+  modalBtnSaveText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
+
+  addTeamBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    backgroundColor: "#E0F2FE",
     alignItems: "center",
     justifyContent: "center",
   },
