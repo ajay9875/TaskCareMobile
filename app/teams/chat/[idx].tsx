@@ -18,7 +18,7 @@ import {
 import { useAuth } from "../../../context/AuthContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
-const POLL_MS = 3000; // Faster 3s poll so typing indicators feel responsive
+const POLL_MS = 3000;
 const TYPING_THROTTLE_MS = 2500;
 
 type ReplyRef = { id: number; user_id: number; name: string; body: string };
@@ -34,10 +34,7 @@ type Message = {
   mentions?: MemberLite[];
 };
 
-type TeamInfo = {
-  id: number;
-  name: string;
-};
+type TeamInfo = { id: number; name: string };
 
 function formatTime(iso: string) {
   const d = new Date(iso);
@@ -51,12 +48,10 @@ function formatDayLabel(iso: string) {
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-
   const sameDay = (a: Date, b: Date) =>
     a.getFullYear() === b.getFullYear() &&
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate();
-
   if (sameDay(d, today)) return "Today";
   if (sameDay(d, yesterday)) return "Yesterday";
   return d.toLocaleDateString([], {
@@ -70,6 +65,21 @@ function dayKey(iso: string) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "unknown";
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+}
+
+/* ── Module-level helper (shared by parent + TypingIndicator) ── */
+function scrollFlatListToEnd(
+  ref: React.RefObject<FlatList<any> | null>,
+  animated = true,
+  delay = 80,
+) {
+  setTimeout(() => {
+    try {
+      ref.current?.scrollToEnd({ animated });
+    } catch {
+      /* list not mounted yet — safe to ignore */
+    }
+  }, delay);
 }
 
 function LiveDot() {
@@ -95,7 +105,7 @@ function LiveDot() {
   return <Animated.View style={[styles.liveDot, { opacity }]} />;
 }
 
-// ── WhatsApp-Style Animated Typing Bubble (Stacked Avatars + 3 Bouncing Dots) ──
+/* ── Single canonical TypingIndicator (no scrolling inside it) ── */
 function TypingIndicator({ typingUsers }: { typingUsers: MemberLite[] }) {
   const dot1 = useRef(new Animated.Value(0)).current;
   const dot2 = useRef(new Animated.Value(0)).current;
@@ -118,14 +128,13 @@ function TypingIndicator({ typingUsers }: { typingUsers: MemberLite[] }) {
             duration: 280,
             useNativeDriver: true,
           }),
-          Animated.delay(450 - delay),
+          Animated.delay(Math.max(0, 450 - delay)),
         ]),
       );
 
     const a1 = bounce(dot1, 0);
     const a2 = bounce(dot2, 140);
     const a3 = bounce(dot3, 280);
-
     a1.start();
     a2.start();
     a3.start();
@@ -141,7 +150,6 @@ function TypingIndicator({ typingUsers }: { typingUsers: MemberLite[] }) {
 
   return (
     <View style={styles.typingRow}>
-      {/* Overlapping member avatars */}
       <View style={styles.typingAvatarsWrap}>
         {typingUsers.slice(0, 4).map((u, idx) => (
           <View
@@ -161,8 +169,6 @@ function TypingIndicator({ typingUsers }: { typingUsers: MemberLite[] }) {
           </View>
         ))}
       </View>
-
-      {/* Speech bubble with 3 animated dots */}
       <View style={styles.typingBubble}>
         <Animated.View
           style={[styles.typingDot, { transform: [{ translateY: dot1 }] }]}
@@ -233,7 +239,6 @@ export default function TeamChatScreen() {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pickedMentions, setPickedMentions] = useState<MemberLite[]>([]);
 
-  // Track Android keyboard height so input bar sits cleanly above keyboard
   const [androidKeyboardHeight, setAndroidKeyboardHeight] = useState(0);
 
   const lastIdRef = useRef<number>(0);
@@ -242,14 +247,12 @@ export default function TeamChatScreen() {
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isMountedRef = useRef(true);
 
-  const scrollToEnd = (animated = true) => {
-    setTimeout(() => listRef.current?.scrollToEnd({ animated }), 60);
-  };
+  const scrollToEnd = (animated = true, delay = 80) =>
+    scrollFlatListToEnd(listRef, animated, delay);
 
-  // Keyboard listener for Android lift & clean restore on hide
+  // Android keyboard lift
   useEffect(() => {
     if (Platform.OS !== "android") return;
-
     const showSub = Keyboard.addListener("keyboardDidShow", (e) => {
       setAndroidKeyboardHeight(e.endCoordinates?.height ?? 0);
       scrollToEnd(true);
@@ -257,13 +260,13 @@ export default function TeamChatScreen() {
     const hideSub = Keyboard.addListener("keyboardDidHide", () => {
       setAndroidKeyboardHeight(0);
     });
-
     return () => {
       showSub.remove();
       hideSub.remove();
     };
   }, []);
 
+  // Fetch team + members
   useEffect(() => {
     if (!validTeamId) return;
     (async () => {
@@ -288,12 +291,12 @@ export default function TeamChatScreen() {
           prev?.name ? prev : { id: found.id, name: found.name },
         );
       } catch {
-        // Non-blocking
+        /* non-blocking */
       }
     })();
   }, [teamId, validTeamId]);
 
-  // Notify backend that current user is typing (throttled)
+  // Typing ping (throttled)
   const sendTypingStatus = useCallback(
     async (isTyping: boolean) => {
       if (!validTeamId) return;
@@ -302,7 +305,6 @@ export default function TeamChatScreen() {
         return;
       }
       lastTypingPingRef.current = isTyping ? now : 0;
-
       try {
         await fetch(`${API_BASE}/teams/${teamId}/typing`, {
           method: "POST",
@@ -311,7 +313,7 @@ export default function TeamChatScreen() {
           body: JSON.stringify({ is_typing: isTyping }),
         });
       } catch {
-        // Non-blocking
+        /* non-blocking */
       }
     },
     [teamId, validTeamId],
@@ -345,7 +347,6 @@ export default function TeamChatScreen() {
         const data = await res.json();
         const newMsgs: Message[] = data.messages || [];
 
-        // Update active typing teammates (excluding self)
         const activeTypers: MemberLite[] = (data.typing_users || []).filter(
           (u: MemberLite) => Number(u.user_id) !== Number(user?.id),
         );
@@ -362,11 +363,12 @@ export default function TeamChatScreen() {
               return true;
             });
           });
-          scrollToEnd(!initial);
+          // Fresh initial load → jump hard to bottom. New messages → smooth.
+          scrollToEnd(!initial, initial ? 250 : 80);
         }
         setError(null);
       } catch {
-        // Silent — will retry next poll
+        /* silent — retry next poll */
       } finally {
         if (initial) setLoading(false);
       }
@@ -374,7 +376,7 @@ export default function TeamChatScreen() {
     [teamId, validTeamId, router, user?.id],
   );
 
-  // Initial load + polling
+  // Initial load + poll
   useEffect(() => {
     isMountedRef.current = true;
 
@@ -396,6 +398,11 @@ export default function TeamChatScreen() {
       sendTypingStatus(false);
     };
   }, [fetchMessages, sendTypingStatus]);
+
+  // Auto-scroll when typing indicator appears
+  useEffect(() => {
+    if (typingUsers.length > 0) scrollToEnd(true, 120);
+  }, [typingUsers.length]);
 
   const send = async () => {
     const body = input.trim();
@@ -442,7 +449,6 @@ export default function TeamChatScreen() {
 
   const displayName = team?.name || "Team Chat";
 
-  // Precompute per-item display metadata (grouped bubbles + day separators)
   const rendered = useMemo(() => {
     const out: Array<{
       kind: "day" | "msg";
@@ -513,11 +519,8 @@ export default function TeamChatScreen() {
     const m = text.match(/(?:^|\s)@([^\s@]*)$/);
     setMentionQuery(m ? m[1] : null);
 
-    if (text.trim().length > 0) {
-      sendTypingStatus(true);
-    } else {
-      sendTypingStatus(false);
-    }
+    if (text.trim().length > 0) sendTypingStatus(true);
+    else sendTypingStatus(false);
   };
 
   const pickMention = (member: MemberLite) => {
@@ -651,7 +654,7 @@ export default function TeamChatScreen() {
       ]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* ── HEADER with TEAM NAME ── */}
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => router.back()}
@@ -688,7 +691,7 @@ export default function TeamChatScreen() {
         </View>
       </View>
 
-      {/* ── MESSAGES ── */}
+      {/* Messages */}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#4ecca3" />
@@ -721,7 +724,17 @@ export default function TeamChatScreen() {
           keyExtractor={(r) => r.key}
           renderItem={renderItem}
           ListFooterComponent={<TypingIndicator typingUsers={typingUsers} />}
-          contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+          contentContainerStyle={{ padding: 16, paddingBottom: 36 }}
+          onContentSizeChange={() => {
+            // Scroll on first layout and whenever content grows (new msgs / typing bubble).
+            scrollToEnd(false, 60);
+            scrollToEnd(true, 300);
+          }}
+          onLayout={() => {
+            // Guarantee first paint lands at the bottom.
+            scrollToEnd(false, 0);
+            scrollToEnd(false, 150);
+          }}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           onScrollToIndexFailed={(info) =>
@@ -776,7 +789,7 @@ export default function TeamChatScreen() {
         </View>
       )}
 
-      {/* ── INPUT BAR ── */}
+      {/* Input */}
       <View
         style={[
           styles.inputBar,
@@ -833,8 +846,6 @@ function avatarColor(userId: number) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0b1220" },
-
-  // ── Header ──
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -854,27 +865,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  headerTitle: {
-    fontSize: 17,
-    fontWeight: "800",
-    color: "#fff",
-    letterSpacing: 0.2,
-  },
+  headerTitle: { fontSize: 17, fontWeight: "800", color: "#fff" },
   headerSubRow: {
     flexDirection: "row",
     alignItems: "center",
     marginTop: 2,
     gap: 5,
   },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#22c55e",
-  },
+  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#22c55e" },
   headerSub: { fontSize: 11, color: "#94A3B8" },
 
-  // ── Empty / error / loading ──
   center: {
     flex: 1,
     justifyContent: "center",
@@ -890,7 +890,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
 
-  // ── Day separator ──
   dayRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -906,11 +905,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
 
-  // ── Message rows ──
   msgRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 3 },
   msgRowMe: { justifyContent: "flex-end" },
   msgRowThem: { justifyContent: "flex-start" },
-
   avatarMini: {
     width: 28,
     height: 28,
@@ -921,7 +918,6 @@ const styles = StyleSheet.create({
   },
   avatarMiniText: { color: "#fff", fontSize: 12, fontWeight: "800" },
   avatarSpacer: { width: 36 },
-
   senderName: {
     fontSize: 12,
     color: "#4ecca3",
@@ -931,7 +927,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 
-  // ── WhatsApp-Style Typing Indicator ──
   typingRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -952,11 +947,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "#0b1220",
   },
-  typingAvatarText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "800",
-  },
+  typingAvatarText: { color: "#fff", fontSize: 11, fontWeight: "800" },
   typingBubble: {
     flexDirection: "row",
     alignItems: "center",
@@ -974,23 +965,15 @@ const styles = StyleSheet.create({
     backgroundColor: "#4ecca3",
   },
 
-  // ── Bubbles ──
-  bubble: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 16,
-  },
+  bubble: { paddingHorizontal: 14, paddingVertical: 9, borderRadius: 16 },
   bubbleMe: { backgroundColor: "#4ecca3" },
   bubbleThem: { backgroundColor: "#1f2937" },
-
   bubbleMeFirst: { borderTopRightRadius: 6 },
   bubbleMeLast: { borderBottomRightRadius: 6 },
   bubbleThemFirst: { borderTopLeftRadius: 6 },
   bubbleThemLast: { borderBottomLeftRadius: 6 },
-
   bubbleText: { color: "#fff", fontSize: 15, lineHeight: 20 },
   bubbleTextMe: { color: "#0f0f0f" },
-
   bubbleTime: {
     fontSize: 10,
     color: "#94A3B8",
@@ -999,7 +982,6 @@ const styles = StyleSheet.create({
   },
   bubbleTimeMe: { color: "#065f46" },
 
-  // ── Input bar ──
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -1018,12 +1000,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 4,
   },
-  input: {
-    maxHeight: 120,
-    color: "#fff",
-    fontSize: 15,
-    paddingVertical: 8,
-  },
+  input: { maxHeight: 120, color: "#fff", fontSize: 15, paddingVertical: 8 },
   sendBtn: {
     width: 44,
     height: 44,
@@ -1032,6 +1009,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
   mention: { color: "#4ecca3", fontWeight: "700" },
   mentionMe: { color: "#065f46", fontWeight: "800" },
 
