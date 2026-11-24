@@ -949,6 +949,13 @@ export default function MyTeamScreen() {
                         )}
                       </View>
 
+                      <View style={styles.stepsWrap}>
+                        <Text style={styles.stepsNumber}>
+                          {(item.steps_today ?? 0).toLocaleString()}
+                        </Text>
+                        <Text style={styles.stepsLabel}>Steps Today</Text>
+                      </View>
+
                       <View
                         style={{
                           flexDirection: "row",
@@ -977,13 +984,6 @@ export default function MyTeamScreen() {
                       </View>
                     </View>
                   </TouchableOpacity>
-
-                  <View style={styles.stepsWrap}>
-                    <Text style={styles.stepsNumber}>
-                      {(item.steps_today ?? 0).toLocaleString()}
-                    </Text>
-                    <Text style={styles.stepsLabel}>steps</Text>
-                  </View>
 
                   {/* 👑 Transfer admin — only visible to the current team admin, on non-admin members */}
                   {activeTeam.is_admin && !isMe && !isAdmin && (
@@ -1336,7 +1336,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   container: { flex: 1, padding: 20, backgroundColor: "#F8FAFC" },
-  title: { fontSize: 26, fontWeight: "800", color: "#0F172A", flexShrink: 1 },
+  title: { fontSize: 22, fontWeight: "800", color: "#0F172A", flexShrink: 1 },
   subtitle: {
     fontSize: 16,
     fontWeight: "700",
@@ -1496,12 +1496,22 @@ const styles = StyleSheet.create({
   memberName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   memberStatus: { fontSize: 12, color: "#64748B" },
   stepsWrap: {
-    alignItems: "flex-end",
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
     marginRight: 8,
     minWidth: 76,
   },
-  stepsNumber: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  stepsLabel: { fontSize: 10, color: "#64748B", marginTop: 1 },
+  stepsNumber: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+  stepsLabel: {
+    fontSize: 10,
+    color: "#64748B",
+  },
   trashBtn: {
     width: 30,
     height: 30,
