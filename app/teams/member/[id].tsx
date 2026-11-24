@@ -5,6 +5,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   FlatList,
   StyleSheet,
   Text,
@@ -132,6 +133,27 @@ export default function TeamMemberHistory() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+  const goBackToTeam = () => {
+    if (team_id) {
+      router.replace({
+        pathname: "/teams",
+        params: { team_id: String(team_id) },
+      });
+      return true;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return true;
+    }
+    router.replace("/teams");
+    return true;
+  };
+
+  const sub = BackHandler.addEventListener("hardwareBackPress", goBackToTeam);
+  return () => sub.remove();
+}, [router, team_id]);
+
   const fetchMemberHistory = async () => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
@@ -153,8 +175,14 @@ export default function TeamMemberHistory() {
       }
       if (res.status === 403) {
         clearTimeout(timeoutId);
-        // ✅ Team-admin bounced back to team screen
-        router.replace("/teams");
+        if (team_id) {
+          router.replace({
+            pathname: "/teams",
+            params: { team_id: String(team_id) },
+          });
+        } else {
+          router.replace("/teams");
+        }
         return;
       }
       if (!res.ok) throw new Error("Member history endpoint error");

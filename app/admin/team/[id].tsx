@@ -386,11 +386,11 @@ export default function AdminTeamDetails() {
                       }
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                      <MaterialCommunityIcons
-                        name="crown-outline"
-                        size={18}
-                        color="#0284C7"
-                      />
+                    <MaterialCommunityIcons
+                      name="crown-outline"
+                      size={18}
+                      color="#0284C7"
+                    />
                     </TouchableOpacity>
                   )}
 

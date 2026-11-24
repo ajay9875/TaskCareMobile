@@ -83,7 +83,20 @@ export default function MyTeamScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const router = useRouter();
-  const { prefill } = useLocalSearchParams<{ prefill?: string }>();
+  const { prefill, team_id } = useLocalSearchParams<{
+    prefill?: string;
+    team_id?: string;
+  }>();
+
+  useEffect(() => {
+    if (team_id && teams.length > 0) {
+      const numericTeamId = Number(team_id);
+      if (teams.some((t: any) => Number(t.id) === numericTeamId)) {
+        setSelectedTeamId(numericTeamId);
+        router.setParams({ team_id: undefined });
+      }
+    }
+  }, [team_id, teams, router]);
 
   // ✅ INTERCEPT BACK BUTTON WHEN A TEAM IS SELECTED
   useEffect(() => {
@@ -863,14 +876,14 @@ export default function MyTeamScreen() {
                 <Text style={{ color: "#fff", marginLeft: 5 }}>Chat</Text>
               </TouchableOpacity>
 
-                <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
-                  <MaterialCommunityIcons
-                    name="share-variant"
-                    size={20}
-                    color="#fff"
-                  />
-                  <Text style={{ color: "#fff", marginLeft: 5 }}>Invite</Text>
-                </TouchableOpacity>
+              <TouchableOpacity style={styles.shareBtn} onPress={handleShare}>
+                <MaterialCommunityIcons
+                  name="share-variant"
+                  size={20}
+                  color="#fff"
+                />
+                <Text style={{ color: "#fff", marginLeft: 5 }}>Invite</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -898,8 +911,8 @@ export default function MyTeamScreen() {
                 router.push({
                   pathname: "/teams/member/[id]",
                   params: {
-                    id: item.user_id,
-                    team_id: activeTeam.id,
+                    id: String(item.user_id),
+                    team_id: String(activeTeam.id),
                   },
                 });
               };
@@ -950,10 +963,18 @@ export default function MyTeamScreen() {
                       </View>
 
                       <View style={styles.stepsWrap}>
+                        {/* 🏅 RANK BADGE — Matches admin.tsx EXACTLY */}
+                        {badge && (
+                          <View style={[styles.userRankBadge, badge.style]}>
+                            <Text style={styles.userRankText}>
+                              {badge.text}
+                            </Text>
+                          </View>
+                        )}
                         <Text style={styles.stepsNumber}>
                           {(item.steps_today ?? 0).toLocaleString()}
                         </Text>
-                        <Text style={styles.stepsLabel}>Steps Today</Text>
+                        <Text style={styles.stepsLabel}>steps</Text>
                       </View>
 
                       <View
@@ -965,15 +986,6 @@ export default function MyTeamScreen() {
                           flexWrap: "wrap",
                         }}
                       >
-                        {/* 🏅 RANK BADGE — Matches admin.tsx EXACTLY */}
-                        {badge && (
-                          <View style={[styles.userRankBadge, badge.style]}>
-                            <Text style={styles.userRankText}>
-                              {badge.text}
-                            </Text>
-                          </View>
-                        )}
-
                         <Text style={styles.memberStatus}>
                           {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
                         </Text>
@@ -1231,7 +1243,7 @@ export default function MyTeamScreen() {
 const styles = StyleSheet.create({
   // 🔥 EXACT RANK STYLES FROM ADMIN.TSX
   userRankBadge: {
-    paddingHorizontal: 9,
+    paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 7,
     borderWidth: 1,
@@ -1328,14 +1340,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 6,
     marginBottom: 10,
-    gap: 8,
+    gap: 10,
   },
   teamStatsRowInner: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  container: { flex: 1, padding: 20, backgroundColor: "#F8FAFC" },
+  container: { flex: 1, paddingHorizontal: 20, backgroundColor: "#F8FAFC" },
   title: { fontSize: 22, fontWeight: "800", color: "#0F172A", flexShrink: 1 },
   subtitle: {
     fontSize: 16,
@@ -1492,7 +1504,7 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   avatarText: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
-  rowText: { flex: 1, minWidth: 0 },
+  rowText: { flex: 1, minWidth: 0, gap: 4 },
   memberName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
   memberStatus: { fontSize: 12, color: "#64748B" },
   stepsWrap: {
@@ -1504,12 +1516,12 @@ const styles = StyleSheet.create({
     minWidth: 76,
   },
   stepsNumber: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "800",
     color: "#0F172A",
   },
   stepsLabel: {
-    fontSize: 10,
+    fontSize: 14,
     color: "#64748B",
   },
   trashBtn: {

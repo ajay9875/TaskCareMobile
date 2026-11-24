@@ -793,7 +793,7 @@ export default function AdminPanel() {
                               onPress={() => openDeleteModal("user", item)}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                              {isDeleting ? (
+                            {isDeleting ? (
                                 <ActivityIndicator
                                   size="small"
                                   color="#DC2626"
@@ -808,11 +808,6 @@ export default function AdminPanel() {
                             </TouchableOpacity>
                           </>
                         )}
-                        <Ionicons
-                          name="chevron-forward"
-                          size={22}
-                          color="#94A3B8"
-                        />
                       </View>
                     </View>
                   );
@@ -1064,7 +1059,7 @@ export default function AdminPanel() {
                         </View>
                       </TouchableOpacity>
 
-                      <View style={styles.actionsWrap}>
+                      <View style={styles.actionWrap}>
                         <TouchableOpacity
                           style={styles.trashBtn}
                           disabled={isDeleting}
@@ -1286,7 +1281,7 @@ export default function AdminPanel() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 16 },
+  container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 5 },
 
   pillRow: {
     flexDirection: "row",
@@ -1491,10 +1486,19 @@ const styles = StyleSheet.create({
   },
 
   actionsWrap: {
-    flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingLeft: 6,
+    paddingRight: 6,
+  },
+  actionWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    paddingLeft: 6,
+    paddingRight: 6,
   },
   trashBtn: {
     width: 34,
