@@ -211,11 +211,13 @@ function renderBody(
 
 export default function TeamChatScreen() {
   const params = useLocalSearchParams<{
+    idx?: string | string[];
     id?: string | string[];
     name?: string | string[];
   }>();
+  const raw = params.idx ?? params.id;
+  const id = Array.isArray(raw) ? raw[0] : raw;
 
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
   const name = Array.isArray(params.name) ? params.name[0] : params.name;
 
   const teamId = Number(id);

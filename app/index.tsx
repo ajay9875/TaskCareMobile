@@ -1,8 +1,8 @@
 // app/index.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import NetInfo from "@react-native-community/netinfo";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import NetInfo from "@react-native-community/netinfo";
 
 import {
   ActivityIndicator,
@@ -18,6 +18,47 @@ import AuthDialog from "../components/AuthDialog";
 import FestivalBlock from "../components/FestivalBlock";
 import { useAuth } from "../context/AuthContext";
 
+type TimeGreeting = {
+  label: "Good morning" | "Good afternoon" | "Good evening" | "Good night";
+  icon:
+    | "sunny-outline"
+    | "partly-sunny-outline"
+    | "moon-outline"
+    | "cloudy-night-outline";
+  accentColor: string;
+};
+
+function getTimeGreeting(date: Date = new Date()): TimeGreeting {
+  const hour = date.getHours();
+
+  if (hour >= 5 && hour < 12) {
+    return {
+      label: "Good morning",
+      icon: "sunny-outline",
+      accentColor: "#D97706",
+    };
+  }
+  if (hour >= 12 && hour < 17) {
+    return {
+      label: "Good afternoon",
+      icon: "partly-sunny-outline",
+      accentColor: "#0284C7",
+    };
+  }
+  if (hour >= 17 && hour < 21) {
+    return {
+      label: "Good evening",
+      icon: "cloudy-night-outline",
+      accentColor: "#7C3AED",
+    };
+  }
+  return {
+    label: "Good night",
+    icon: "moon-outline",
+    accentColor: "#1E293B",
+  };
+}
+
 export default function LandingScreen() {
   const router = useRouter();
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
@@ -29,13 +70,13 @@ export default function LandingScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [errorType, setErrorType] = useState<
-    "offline" | "server" | null
-  >(null);
+  const [errorType, setErrorType] = useState<"offline" | "server" | null>(null);
 
-  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] =
-    useState(false);
+  const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
+  const [greeting, setGreeting] = useState<TimeGreeting>(() =>
+    getTimeGreeting(),
+  );
 
   // AFTER
   const [publicStats, setPublicStats] = useState<{
@@ -50,187 +91,177 @@ export default function LandingScreen() {
   } | null>(null);
 
   useFocusEffect(
-  useCallback(() => {
-    loadHomeData();
-  }, [loadHomeData]),
-);
-
-const loadHomeData = useCallback(
-  async (isRefresh = false) => {
-    if (isRefresh) {
-      setRefreshing(true);
-    } else if (!hasLoadedSuccessfullyRef.current) {
-        setLoading(true);
-    }
-
-    setErrorType(null);
-
-    try {
-      // 1. Check actual internet connectivity
-      const networkState = await NetInfo.fetch();
-
-      if (
-        networkState.isConnected === false ||
-        networkState.isInternetReachable === false
-      ) {
-        setErrorType("offline");
-        return;
-      }
-
-      // 2. Check whether the backend is reachable
-      if (!API_BASE) {
-        throw new Error("API configuration unavailable");
-      }
-
-      const res = await fetch(`${API_BASE}/public/stats`, {
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error(`Backend returned status ${res.status}`);
-      }
-
-      const data = await res.json();
-
-      if (data.status !== "success") {
-        throw new Error("Invalid backend response");
-      }
-
-      // 3. Update public statistics
-      setPublicStats({
-        total_users: Number(data.total_users) || 0,
-        total_steps: Number(data.total_steps) || 0,
-        tasks_handled: Number(data.tasks_handled) || 0,
-        display: {
-          total_users:
-            data.display?.total_users ??
-            String(data.total_users ?? 0),
-
-          total_steps:
-            data.display?.total_steps ??
-            String(data.total_steps ?? 0),
-
-          tasks_handled:
-            data.display?.tasks_handled ??
-            String(data.tasks_handled ?? 0),
-        },
-      });
-
-      // 4. Refresh authentication only after connectivity is confirmed
-      await checkSession();
-
-      hasLoadedSuccessfullyRef.current = true;
-      setHasLoadedSuccessfully(true);
-      setErrorType(null);
-    } catch (error) {
-      console.log("Landing screen loading error:", error);
-
-      // Internet was available, but the backend request failed.
-      setErrorType("server");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  },
-  [API_BASE, checkSession]
-);
-
-// Initial loading
-if (loading && !hasLoadedSuccessfully) {
-  return (
-    <View
-      style={[
-        styles.container,
-        {
-          backgroundColor: "#1a1a2e",
-          justifyContent: "center",
-          alignItems: "center",
-        },
-      ]}
-    >
-      <ActivityIndicator size="large" color="#4ecca3" />
-      <Text style={{ color: "#fff", marginTop: 12 }}>
-        Loading FitWisely...
-      </Text>
-    </View>
+    useCallback(() => {
+      loadHomeData();
+    }, [loadHomeData]),
   );
-}
 
-// Connection/backend error screen
-if (errorType && !hasLoadedSuccessfully) {
-  const isOffline = errorType === "offline";
+  const loadHomeData = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else if (!hasLoadedSuccessfullyRef.current) {
+        setLoading(true);
+      }
 
-  return (
-    <SafeAreaView
-      style={{
-        flex: 1,
-        backgroundColor: "#1a1a2e",
-      }}
-    >
-      <View style={styles.errorContainer}>
-        <MaterialCommunityIcons
-          name={
-            isOffline
-              ? "wifi-off"
-              : "cloud-alert-outline"
-          }
-          size={76}
-          color={isOffline ? "#ff6b35" : "#fbbf24"}
-          style={{ marginBottom: 20 }}
-        />
+      setErrorType(null);
 
-        <Text style={styles.errorTitle}>
-          {isOffline
-            ? "No Internet Connection"
-            : "Service Temporarily Unavailable"}
-        </Text>
+      setGreeting(getTimeGreeting());
 
-        <Text style={styles.errorSubtext}>
-          {isOffline
-            ? "Your device is currently offline. Please check your internet connection and try again."
-            : "We are currently unable to connect to our servers. Your internet connection may be working, but our service is temporarily unavailable. Please try again later."}
-        </Text>
+      try {
+        // 1. Check actual internet connectivity
+        const networkState = await NetInfo.fetch();
 
-        <TouchableOpacity
-          style={styles.retryBtn}
-          onPress={() => loadHomeData()}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator
-              size="small"
-              color="#1a1a2e"
-            />
-          ) : (
-            <>
-              <MaterialCommunityIcons
-                name="refresh"
-                size={20}
-                color="#1a1a2e"
-              />
-              <Text style={styles.retryBtnText}>
-                Try Again
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+        if (
+          networkState.isConnected === false ||
+          networkState.isInternetReachable === false
+        ) {
+          setErrorType("offline");
+          return;
+        }
 
-        <Text
-          style={{
-            color: "#94A3B8",
-            fontSize: 12,
-            marginTop: 22,
-            textAlign: "center",
-          }}
-        >
-          {isOffline
-            ? "FitWisely will be available once your connection is restored."
-            : "Thank you for your patience. Please try again shortly."}
+        // 2. Check whether the backend is reachable
+        if (!API_BASE) {
+          throw new Error("API configuration unavailable");
+        }
+
+        const res = await fetch(`${API_BASE}/public/stats`, {
+          credentials: "include",
+        });
+
+        if (!res.ok) {
+          throw new Error(`Backend returned status ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        if (data.status !== "success") {
+          throw new Error("Invalid backend response");
+        }
+
+        // 3. Update public statistics
+        setPublicStats({
+          total_users: Number(data.total_users) || 0,
+          total_steps: Number(data.total_steps) || 0,
+          tasks_handled: Number(data.tasks_handled) || 0,
+          display: {
+            total_users:
+              data.display?.total_users ?? String(data.total_users ?? 0),
+
+            total_steps:
+              data.display?.total_steps ?? String(data.total_steps ?? 0),
+
+            tasks_handled:
+              data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
+          },
+        });
+
+        // 4. Refresh authentication only after connectivity is confirmed
+        await checkSession();
+
+        hasLoadedSuccessfullyRef.current = true;
+        setHasLoadedSuccessfully(true);
+        setErrorType(null);
+      } catch (error) {
+        console.log("Landing screen loading error:", error);
+
+        // Internet was available, but the backend request failed.
+        setErrorType("server");
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [API_BASE, checkSession],
+  );
+
+  // Initial loading
+  if (loading && !hasLoadedSuccessfully) {
+    return (
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: "#1a1a2e",
+            justifyContent: "center",
+            alignItems: "center",
+          },
+        ]}
+      >
+        <ActivityIndicator size="large" color="#4ecca3" />
+        <Text style={{ color: "#fff", marginTop: 12 }}>
+          Loading FitWisely...
         </Text>
       </View>
-    </SafeAreaView>
-  );
-}
+    );
+  }
+
+  // Connection/backend error screen
+  if (errorType && !hasLoadedSuccessfully) {
+    const isOffline = errorType === "offline";
+
+    return (
+      <SafeAreaView
+        style={{
+          flex: 1,
+          backgroundColor: "#1a1a2e",
+        }}
+      >
+        <View style={styles.errorContainer}>
+          <MaterialCommunityIcons
+            name={isOffline ? "wifi-off" : "cloud-alert-outline"}
+            size={76}
+            color={isOffline ? "#ff6b35" : "#fbbf24"}
+            style={{ marginBottom: 20 }}
+          />
+
+          <Text style={styles.errorTitle}>
+            {isOffline
+              ? "No Internet Connection"
+              : "Service Temporarily Unavailable"}
+          </Text>
+
+          <Text style={styles.errorSubtext}>
+            {isOffline
+              ? "Your device is currently offline. Please check your internet connection and try again."
+              : "We are currently unable to connect to our servers. Your internet connection may be working, but our service is temporarily unavailable. Please try again later."}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.retryBtn}
+            onPress={() => loadHomeData()}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#1a1a2e" />
+            ) : (
+              <>
+                <MaterialCommunityIcons
+                  name="refresh"
+                  size={20}
+                  color="#1a1a2e"
+                />
+                <Text style={styles.retryBtnText}>Try Again</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <Text
+            style={{
+              color: "#94A3B8",
+              fontSize: 12,
+              marginTop: 22,
+              textAlign: "center",
+            }}
+          >
+            {isOffline
+              ? "FitWisely will be available once your connection is restored."
+              : "Thank you for your patience. Please try again shortly."}
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
@@ -257,98 +288,108 @@ if (errorType && !hasLoadedSuccessfully) {
           />
         }
       >
+        <View style={styles.greetingCard}>
+          <View style={styles.greetingTopRow}>
+            <Ionicons
+              name={greeting.icon}
+              size={20}
+              color={greeting.accentColor}
+            />
+            <Text style={styles.greetingText}>
+              {isLoggedIn && user?.name
+                ? `${greeting.label}, ${user.name.trim().split(" ")[0]}`
+                : greeting.label}
+            </Text>
+          </View>
+          <Text style={styles.greetingSubtext}>
+            {isLoggedIn
+              ? "Ready to check your steps, teams, and daily tasks?"
+              : "Track daily steps, team challenges, and tasks effortlessly."}
+          </Text>
+        </View>
 
         {errorType && (
-  <View
-    style={{
-      width: "100%",
-      backgroundColor:
-        errorType === "offline" ? "#FFF7ED" : "#FEF2F2",
-      borderColor:
-        errorType === "offline" ? "#FDBA74" : "#FECACA",
-      borderWidth: 1,
-      borderRadius: 12,
-      padding: 14,
-      marginBottom: 16,
-    }}
-  >
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <MaterialCommunityIcons
-        name={
-          errorType === "offline"
-            ? "wifi-off"
-            : "cloud-alert-outline"
-        }
-        size={22}
-        color={
-          errorType === "offline" ? "#C2410C" : "#DC2626"
-        }
-      />
+          <View
+            style={{
+              width: "100%",
+              backgroundColor: errorType === "offline" ? "#FFF7ED" : "#FEF2F2",
+              borderColor: errorType === "offline" ? "#FDBA74" : "#FECACA",
+              borderWidth: 1,
+              borderRadius: 12,
+              padding: 14,
+              marginBottom: 16,
+            }}
+          >
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <MaterialCommunityIcons
+                name={
+                  errorType === "offline" ? "wifi-off" : "cloud-alert-outline"
+                }
+                size={22}
+                color={errorType === "offline" ? "#C2410C" : "#DC2626"}
+              />
 
-      <Text
-        style={{
-          fontWeight: "800",
-          fontSize: 14,
-          marginLeft: 8,
-          color: "#1E293B",
-          flex: 1,
-        }}
-      >
-        {errorType === "offline"
-          ? "Internet connection lost"
-          : "Server temporarily unavailable"}
-      </Text>
-    </View>
+              <Text
+                style={{
+                  fontWeight: "800",
+                  fontSize: 14,
+                  marginLeft: 8,
+                  color: "#1E293B",
+                  flex: 1,
+                }}
+              >
+                {errorType === "offline"
+                  ? "Internet connection lost"
+                  : "Server temporarily unavailable"}
+              </Text>
+            </View>
 
-    <Text
-      style={{
-        fontSize: 13,
-        color: "#475569",
-        marginTop: 6,
-        lineHeight: 19,
-      }}
-    >
-      {errorType === "offline"
-        ? "Please check your internet connection and retry."
-        : "We couldn't reach our server. Please try again later."}
-    </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: "#475569",
+                marginTop: 6,
+                lineHeight: 19,
+              }}
+            >
+              {errorType === "offline"
+                ? "Please check your internet connection and retry."
+                : "We couldn't reach our server. Please try again later."}
+            </Text>
 
-    <TouchableOpacity
-      onPress={() => loadHomeData(true)}
-      style={{
-        marginTop: 10,
-        alignSelf: "flex-start",
-        flexDirection: "row",
-        alignItems: "center",
-      }}
-    >
-      <MaterialCommunityIcons
-        name="refresh"
-        size={18}
-        color="#2563EB"
-      />
+            <TouchableOpacity
+              onPress={() => loadHomeData(true)}
+              style={{
+                marginTop: 10,
+                alignSelf: "flex-start",
+                flexDirection: "row",
+                alignItems: "center",
+              }}
+            >
+              <MaterialCommunityIcons
+                name="refresh"
+                size={18}
+                color="#2563EB"
+              />
 
-      <Text
-        style={{
-          color: "#2563EB",
-          fontWeight: "700",
-          marginLeft: 5,
-        }}
-      >
-        Retry Connection
-      </Text>
-    </TouchableOpacity>
-  </View>
-)}
+              <Text
+                style={{
+                  color: "#2563EB",
+                  fontWeight: "700",
+                  marginLeft: 5,
+                }}
+              >
+                Retry Connection
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <FestivalBlock />
-        <Text style={styles.shortSubtext}>
-          Stay fit, productive and organized. All in one place.
-        </Text>
 
         {/* ⭐ TRUST METRICS */}
         <View style={styles.statsGrid}>
@@ -781,6 +822,33 @@ if (errorType && !hasLoadedSuccessfully) {
 }
 
 const styles = StyleSheet.create({
+  greetingCard: {
+    width: "100%",
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#e9ecef",
+  },
+  greetingTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  greetingText: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: "#1E293B",
+    letterSpacing: -0.3,
+  },
+  greetingSubtext: {
+    fontSize: 13,
+    color: "#64748B",
+    marginTop: 4,
+    lineHeight: 18,
+  },
   warningBox: {
     width: "100%",
     backgroundColor: "#FFFBEB",

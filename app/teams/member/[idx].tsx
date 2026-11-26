@@ -134,25 +134,25 @@ export default function TeamMemberHistory() {
   }, [id]);
 
   useEffect(() => {
-  const goBackToTeam = () => {
-    if (team_id) {
-      router.replace({
-        pathname: "/teams",
-        params: { team_id: String(team_id) },
-      });
+    const goBackToTeam = () => {
+      if (team_id) {
+        router.replace({
+          pathname: "/teams",
+          params: { team_id: String(team_id) },
+        });
+        return true;
+      }
+      if (router.canGoBack()) {
+        router.back();
+        return true;
+      }
+      router.replace("/teams");
       return true;
-    }
-    if (router.canGoBack()) {
-      router.back();
-      return true;
-    }
-    router.replace("/teams");
-    return true;
-  };
+    };
 
-  const sub = BackHandler.addEventListener("hardwareBackPress", goBackToTeam);
-  return () => sub.remove();
-}, [router, team_id]);
+    const sub = BackHandler.addEventListener("hardwareBackPress", goBackToTeam);
+    return () => sub.remove();
+  }, [router, team_id]);
 
   const fetchMemberHistory = async () => {
     const controller = new AbortController();

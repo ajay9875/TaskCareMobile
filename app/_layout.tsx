@@ -90,14 +90,31 @@ function MainLayout() {
 
   isReadyRef.current = isAppReady;
 
-  const openFromNotification = (data: any) => {
+  const lastHandledNotifIdRef = useRef<string | null>(null);
+
+  const openFromNotification = (data: any, notificationId?: string) => {
     if (!data) return;
+
+    if (notificationId && lastHandledNotifIdRef.current === notificationId) {
+      return;
+    }
+    if (notificationId) {
+      lastHandledNotifIdRef.current = notificationId;
+    }
+
     if (data.screen === "steps") {
       routerRef.current.push("/steps");
     } else if (data.screen === "team-chat" && data.team_id) {
+      const teamIdNum = Number(data.team_id);
+      if (!Number.isSafeInteger(teamIdNum) || teamIdNum <= 0) return;
+
       routerRef.current.push({
         pathname: "/teams/chat/[id]",
-        params: { id: String(data.team_id) },
+        params: {
+          idx: String(teamIdNum),
+          id: String(teamIdNum),
+          ...(data.name ? { name: String(data.name) } : {}),
+        },
       });
     }
   };
@@ -128,7 +145,10 @@ function MainLayout() {
     (async () => {
       const response = await Notifications.getLastNotificationResponseAsync();
       if (!response) return;
-      openFromNotification(response.notification.request.content.data);
+      openFromNotification(
+        response.notification.request.content.data,
+        response.notification.request.identifier,
+      );
       await Notifications.clearLastNotificationResponseAsync?.();
     })().catch(() => {});
   }, [isAppReady]);
@@ -143,7 +163,10 @@ function MainLayout() {
         notifSub = Notifications.addNotificationResponseReceivedListener(
           (response: any) => {
             if (!isReadyRef.current) return; // cold-start effect handles this
-            openFromNotification(response.notification.request.content.data);
+            openFromNotification(
+              response.notification.request.content.data,
+              response.notification.request.identifier,
+            );
           },
         );
       } catch (e) {}
@@ -180,6 +203,7 @@ function MainLayout() {
 
     // Normal startup (always runs)
     setIsAppReady(true);
+
     setTimeout(async () => {
       try {
         await initStepTracker();
@@ -377,7 +401,7 @@ function MainLayout() {
           <Stack.Screen name="teams/index" />
           <Stack.Screen name="teams/member/[id]" />
           <Stack.Screen
-            name="teams/chat/[id]"
+            name="teams/chat/[idx]"
             options={{ headerShown: false }}
           />
         </Stack>

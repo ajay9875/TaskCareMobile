@@ -860,9 +860,10 @@ export default function MyTeamScreen() {
                   }
 
                   router.push({
-                    pathname: "/teams/chat/[idx]",
+                    pathname: "/teams/chat/[id]",
                     params: {
-                      id: String(activeTeam.id),
+                      idx: String(activeTeam.id), // ✅ correct param name
+                      id: String(activeTeam.id), // safety net
                       name: activeTeam.name,
                     },
                   });
@@ -909,9 +910,9 @@ export default function MyTeamScreen() {
                 }
 
                 router.push({
-                  pathname: "/teams/member/[id]",
+                  pathname: "/teams/member/[idx]",
                   params: {
-                    id: String(item.user_id),
+                    idx: String(item.user_id),
                     team_id: String(activeTeam.id),
                   },
                 });
@@ -1348,7 +1349,7 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   container: { flex: 1, paddingHorizontal: 20, backgroundColor: "#F8FAFC" },
-  title: { fontSize: 22, fontWeight: "800", color: "#0F172A", flexShrink: 1 },
+  title: { fontSize: 18, fontWeight: "800", color: "#0F172A", flexShrink: 1 },
   subtitle: {
     fontSize: 16,
     fontWeight: "700",
@@ -1464,8 +1465,8 @@ const styles = StyleSheet.create({
   shareBtn: {
     flexDirection: "row",
     backgroundColor: "#4F46E5",
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 20,
     alignItems: "center",
   },
@@ -1473,8 +1474,8 @@ const styles = StyleSheet.create({
   chatBtn: {
     flexDirection: "row",
     backgroundColor: "#0284C7",
-    paddingHorizontal: 15,
-    paddingVertical: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 20,
     alignItems: "center",
   },
