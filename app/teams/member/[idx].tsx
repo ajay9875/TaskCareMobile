@@ -107,10 +107,11 @@ type MemberInfo = {
 };
 
 export default function TeamMemberHistory() {
-  const { id, team_id } = useLocalSearchParams<{
-    id: string;
+  const { idx, team_id } = useLocalSearchParams<{
+    idx: string;
     team_id: string;
   }>();
+  const id = idx;
   const router = useRouter();
 
   // 🔥 Get the currently logged in user
