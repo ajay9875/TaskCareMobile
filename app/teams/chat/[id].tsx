@@ -237,6 +237,9 @@ export default function TeamChatScreen() {
 
   const [members, setMembers] = useState<MemberLite[]>([]);
   const [typingUsers, setTypingUsers] = useState<MemberLite[]>([]);
+  
+  const [onlineCount, setOnlineCount] = useState(0);
+
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [pickedMentions, setPickedMentions] = useState<MemberLite[]>([]);
@@ -353,6 +356,7 @@ export default function TeamChatScreen() {
           (u: MemberLite) => Number(u.user_id) !== Number(user?.id),
         );
         setTypingUsers(activeTypers);
+        setOnlineCount(Number(data.online_count ?? 0));
 
         if (newMsgs.length > 0) {
           lastIdRef.current = newMsgs[newMsgs.length - 1].id;
@@ -685,9 +689,11 @@ export default function TeamChatScreen() {
                 ? typingUsers.length === 1
                   ? `${typingUsers[0].name} is typing…`
                   : `${typingUsers.length} members typing…`
-                : members.length > 0
-                  ? `${members.length} ${members.length === 1 ? "member" : "members"} · Live updates`
-                  : "Team channel · Live updates"}
+                : onlineCount > 0
+                  ? `${onlineCount} Online ${onlineCount === 1 ? "member" : "members"}`
+                  : members.length > 0
+                    ? `${members.length} ${members.length === 1 ? "member" : "members"} · Live updates`
+                    : "Team channel · Live updates"}
             </Text>
           </View>
         </View>
