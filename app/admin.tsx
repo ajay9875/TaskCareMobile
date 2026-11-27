@@ -16,9 +16,16 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
+import {
+  getAdminColors,
+  getAdminStyles,
+  statusColorFor,
+  type AdminColors,
+} from "../utils/adminTheme";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
-const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+const ONLINE_WINDOW_MS = 15 * 1000;
 const MAX_TEAMS = 10;
 
 const AVATAR_COLORS = [
@@ -102,19 +109,247 @@ type AdminTeam = {
   members?: any[];
 };
 
-function statusColorFor(state?: string): string {
-  switch (state) {
-    case "online":
-      return "#16A34A";
-    case "signed_out":
-      return "#DC2626";
-    case "offline":
-      return "#94A3B8";
-    case "never":
-    default:
-      return "#94A3B8";
-  }
+/* ------------------------------------------------------------------ */
+/* Screen-specific styles (shared ones live in utils/adminTheme.ts)    */
+/* ------------------------------------------------------------------ */
+function createStyles(c: AdminColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg, paddingHorizontal: 5 },
+    centered: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.bg,
+    },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: c.text,
+      marginTop: 8,
+    },
+    pinSubtitle: { textAlign: "center", color: c.muted, marginBottom: 20 },
+    pinInputWrapper: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surface,
+      borderWidth: 1,
+      borderColor: c.border,
+      borderRadius: 10,
+      paddingRight: 10,
+    },
+    pinInput: {
+      flex: 1,
+      padding: 15,
+      fontSize: 20,
+      textAlign: "center",
+      letterSpacing: 5,
+      color: c.text,
+    },
+    eyeIcon: { padding: 5 },
+    unlockBtn: {
+      backgroundColor: c.purpleBtn,
+      padding: 15,
+      borderRadius: 10,
+      marginTop: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    unlockBtnDisabled: { backgroundColor: c.disabledBtn },
+    unlockBtnText: {
+      color: "#fff",
+      textAlign: "center",
+      fontWeight: "bold",
+      fontSize: 16,
+    },
+
+    // Tabs
+    tabTrack: {
+      flexDirection: "row",
+      marginHorizontal: 16,
+      marginTop: 10,
+      backgroundColor: c.tabTrack,
+      borderRadius: 10,
+      padding: 4,
+    },
+    tab: { flex: 1, padding: 10, alignItems: "center", borderRadius: 8 },
+    tabActive: { backgroundColor: c.tabActive },
+    tabText: { fontWeight: "bold", color: c.muted },
+    tabTextActive: { color: c.text },
+
+    // Stats
+    statsRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      marginHorizontal: 16,
+      marginTop: 10,
+      marginBottom: 4,
+    },
+    statItem: { flex: 1, alignItems: "center", gap: 2 },
+    statValue: { fontSize: 16, fontWeight: "800", color: c.text },
+    statLabel: { fontSize: 10, fontWeight: "600", color: c.muted },
+    statDivider: { width: 1, height: 30, backgroundColor: c.border },
+
+    // Team switcher
+    switcherContainer: { marginBottom: 10, marginTop: 6 },
+    switcherScroll: { gap: 10, paddingVertical: 10, paddingHorizontal: 4 },
+    teamPill: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: c.pillBg,
+    },
+    teamPillActive: { backgroundColor: c.primary },
+    teamPillText: { fontSize: 14, fontWeight: "600", color: c.pillText },
+    teamPillTextActive: { color: "#fff" },
+    addTeamPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: 20,
+      backgroundColor: c.addPillBg,
+      borderWidth: 1,
+      borderColor: c.addPillBorder,
+    },
+    addTeamPillActive: { backgroundColor: c.primary, borderColor: c.primary },
+    addTeamPillText: {
+      fontSize: 14,
+      fontWeight: "600",
+      color: c.primaryIcon,
+      marginLeft: 4,
+    },
+
+    teamStatsCard: {
+      backgroundColor: c.surface,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: c.border,
+      paddingVertical: 10,
+      paddingHorizontal: 6,
+      marginBottom: 10,
+      gap: 8,
+      marginHorizontal: 16,
+    },
+    teamStatsRowInner: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+    teamStatItem: { flex: 1, alignItems: "center", gap: 2 },
+    teamStatValue: { fontSize: 15, fontWeight: "800", color: c.text },
+    teamStatLabel: { fontSize: 10, fontWeight: "600", color: c.muted },
+    teamStatDivider: { width: 1, height: 28, backgroundColor: c.border },
+
+    // Rows
+    row: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surface,
+      borderRadius: 16,
+      paddingVertical: 10,
+      paddingLeft: 14,
+      paddingRight: 8,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      elevation: isDark ? 0 : 2,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.05,
+      shadowRadius: 3,
+    },
+    avatar: {
+      width: 46,
+      height: 46,
+      borderRadius: 23,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    rowText: { flex: 1, minWidth: 0 },
+    rowName: { fontSize: 16, fontWeight: "700", color: c.text },
+    rowEmail: { fontSize: 13, color: c.textSoft, marginTop: 1 },
+    rowMeta: {
+      fontSize: 11,
+      color: c.faint,
+      marginTop: 4,
+      fontWeight: "600",
+    },
+    userNameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    userRankRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 6,
+      marginBottom: 2,
+      flexWrap: "wrap",
+    },
+    userStepsText: { fontSize: 11, fontWeight: "600", color: c.muted },
+    actionsWrap: {
+      alignItems: "center",
+      gap: 10,
+      paddingLeft: 6,
+      paddingRight: 6,
+    },
+    actionWrap: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 10,
+      paddingLeft: 6,
+      paddingRight: 6,
+    },
+
+    // Add-to-team list
+    teamSelectRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 12,
+      paddingHorizontal: 12,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+      backgroundColor: c.surfaceAlt,
+      marginBottom: 8,
+    },
+    teamSelectRowActive: {
+      borderColor: c.info,
+      backgroundColor: c.selectActiveBg,
+    },
+    teamSelectName: { fontSize: 14, fontWeight: "700", color: c.text },
+    teamSelectMeta: { fontSize: 11, color: c.muted, marginTop: 2 },
+    noTeamsText: {
+      textAlign: "center",
+      color: c.faint,
+      paddingVertical: 20,
+    },
+
+    emptyBlock: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 60,
+      gap: 8,
+    },
+    emptyText: { color: c.faint, fontSize: 14, fontWeight: "600" },
+  });
 }
+
+const lightScreenStyles = createStyles(getAdminColors(false), false);
+const darkScreenStyles = createStyles(getAdminColors(true), true);
 
 function StatusPill({
   state,
@@ -125,21 +360,26 @@ function StatusPill({
   label?: string;
   isSignedIn?: boolean;
 }) {
-  const color = statusColorFor(state);
-  const signedInColor = isSignedIn ? "#16A34A" : "#DC2626";
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = getAdminColors(isDark);
+  const shared = getAdminStyles(isDark);
+
+  const color = statusColorFor(c, state);
+  const signedInColor = isSignedIn ? c.success : c.danger;
 
   return (
-    <View style={styles.pillRow}>
-      <View style={styles.statusPill}>
-        <View style={[styles.statusDot, { backgroundColor: color }]} />
-        <Text style={[styles.statusPillText, { color }]} numberOfLines={1}>
+    <View style={shared.pillRow}>
+      <View style={shared.statusPill}>
+        <View style={[shared.statusDot, { backgroundColor: color }]} />
+        <Text style={[shared.statusPillText, { color }]} numberOfLines={1}>
           {label ?? "Not active yet"}
         </Text>
       </View>
-      <View style={styles.statusPill}>
-        <View style={[styles.statusDot, { backgroundColor: signedInColor }]} />
+      <View style={shared.statusPill}>
+        <View style={[shared.statusDot, { backgroundColor: signedInColor }]} />
         <Text
-          style={[styles.statusPillText, { color: signedInColor }]}
+          style={[shared.statusPillText, { color: signedInColor }]}
           numberOfLines={1}
         >
           {isSignedIn ? "Signed In" : "Signed Out"}
@@ -152,6 +392,13 @@ function StatusPill({
 export default function AdminPanel() {
   const router = useRouter();
   const { user, isAdmin, isLoggedIn } = useAuth();
+
+  // Theme
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = getAdminColors(isDark);
+  const shared = getAdminStyles(isDark);
+  const styles = isDark ? darkScreenStyles : lightScreenStyles;
 
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [teams, setTeams] = useState<AdminTeam[]>([]);
@@ -210,29 +457,21 @@ export default function AdminPanel() {
     });
   }, [teams]);
 
-  // ─────────────────────────────────────────────────────────────
-  // 🅰️ SORTED USERS
-  // 1. Logged-in User (You) at the very top
-  // 2. Other Super Admins
-  // 3. Remaining users alphabetically
-  // ─────────────────────────────────────────────────────────────
+  // SORTED USERS: you first, other super admins next, then alphabetical
   const sortedUsers = useMemo(() => {
     return [...users].sort((a, b) => {
       const aIsYou = Number(user?.id) === Number(a.id);
       const bIsYou = Number(user?.id) === Number(b.id);
 
-      // 1. Pin yourself (the logged-in admin) to the top
       if (aIsYou && !bIsYou) return -1;
       if (!aIsYou && bIsYou) return 1;
 
-      // 2. Pin other Super Admins below you
       const aIsSuperAdmin = isSuperAdminUser(a);
       const bIsSuperAdmin = isSuperAdminUser(b);
 
       if (aIsSuperAdmin && !bIsSuperAdmin) return -1;
       if (!aIsSuperAdmin && bIsSuperAdmin) return 1;
 
-      // 3. Alphabetical for everyone else
       return (a.name || "").localeCompare(b.name || "", undefined, {
         sensitivity: "base",
       });
@@ -467,6 +706,16 @@ export default function AdminPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isLoggedIn]);
 
+  const refreshControl = (
+    <RefreshControl
+      refreshing={loading}
+      onRefresh={fetchData}
+      tintColor={c.primaryIcon}
+      colors={[c.primary]}
+      progressBackgroundColor={c.surface}
+    />
+  );
+
   // ─── PIN SCREEN ───
   if (!isVerified) {
     const isPinComplete = pin.length === 6;
@@ -475,32 +724,19 @@ export default function AdminPanel() {
       <SafeAreaView style={styles.container}>
         <ScrollView
           contentContainerStyle={{ paddingBottom: 40 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading}
-              onRefresh={fetchData}
-              tintColor="#4F46E5"
-              colors={["#4F46E5"]}
-            />
-          }
+          refreshControl={refreshControl}
         >
           <View style={{ padding: 20, marginTop: 50 }}>
             <MaterialCommunityIcons
               name="shield-lock"
               size={60}
-              color="#7C3AED"
+              color={c.purple}
               style={{ alignSelf: "center" }}
             />
             <Text style={[styles.headerTitle, { textAlign: "center" }]}>
               Super Admin Access
             </Text>
-            <Text
-              style={{
-                textAlign: "center",
-                color: "#64748B",
-                marginBottom: 20,
-              }}
-            >
+            <Text style={styles.pinSubtitle}>
               Enter 6-digit PIN to unlock Teams and User Management
             </Text>
 
@@ -508,7 +744,9 @@ export default function AdminPanel() {
               <TextInput
                 style={styles.pinInput}
                 placeholder="••••••"
+                placeholderTextColor={c.faint}
                 keyboardType="number-pad"
+                keyboardAppearance={isDark ? "dark" : "light"}
                 secureTextEntry={!showPin}
                 maxLength={6}
                 value={pin}
@@ -522,7 +760,7 @@ export default function AdminPanel() {
                 <Ionicons
                   name={showPin ? "eye-off-outline" : "eye-outline"}
                   size={24}
-                  color="#64748B"
+                  color={c.muted}
                 />
               </TouchableOpacity>
             </View>
@@ -530,30 +768,15 @@ export default function AdminPanel() {
             <TouchableOpacity
               onPress={verifyPin}
               disabled={!isPinComplete || isVerifying}
-              style={{
-                backgroundColor:
-                  !isPinComplete || isVerifying ? "#D1D5DB" : "#7C3AED",
-                padding: 15,
-                borderRadius: 10,
-                marginTop: 20,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              style={[
+                styles.unlockBtn,
+                (!isPinComplete || isVerifying) && styles.unlockBtnDisabled,
+              ]}
             >
               {isVerifying ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text
-                  style={{
-                    color: "#fff",
-                    textAlign: "center",
-                    fontWeight: "bold",
-                    fontSize: 16,
-                  }}
-                >
-                  Unlock
-                </Text>
+                <Text style={styles.unlockBtnText}>Unlock</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -564,15 +787,8 @@ export default function AdminPanel() {
 
   if (loading && users.length === 0 && teams.length === 0) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "#F8FAFC",
-        }}
-      >
-        <ActivityIndicator size="large" color="#4F46E5" />
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={c.primaryIcon} />
       </View>
     );
   }
@@ -582,63 +798,35 @@ export default function AdminPanel() {
     <SafeAreaView style={styles.container}>
       <ScrollView
         contentContainerStyle={{ paddingBottom: 40 }}
-        refreshControl={
-          <RefreshControl
-            refreshing={loading}
-            onRefresh={fetchData}
-            tintColor="#4F46E5"
-            colors={["#4F46E5"]}
-          />
-        }
+        refreshControl={refreshControl}
       >
         {/* Tab Selector */}
-        <View
-          style={{
-            flexDirection: "row",
-            marginHorizontal: 16,
-            marginTop: 10,
-            backgroundColor: "#E2E8F0",
-            borderRadius: 10,
-            padding: 4,
-          }}
-        >
+        <View style={styles.tabTrack}>
           <TouchableOpacity
-            style={{
-              flex: 1,
-              padding: 10,
-              alignItems: "center",
-              backgroundColor: activeTab === "users" ? "#fff" : "transparent",
-              borderRadius: 8,
-            }}
+            style={[styles.tab, activeTab === "users" && styles.tabActive]}
             onPress={() => {
               setActiveTab("users");
               setSelectedTeamId(null);
             }}
           >
             <Text
-              style={{
-                fontWeight: "bold",
-                color: activeTab === "users" ? "#0F172A" : "#64748B",
-              }}
+              style={[
+                styles.tabText,
+                activeTab === "users" && styles.tabTextActive,
+              ]}
             >
               Users ({users.length})
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={{
-              flex: 1,
-              padding: 10,
-              alignItems: "center",
-              backgroundColor: activeTab === "teams" ? "#fff" : "transparent",
-              borderRadius: 8,
-            }}
+            style={[styles.tab, activeTab === "teams" && styles.tabActive]}
             onPress={() => setActiveTab("teams")}
           >
             <Text
-              style={{
-                fontWeight: "bold",
-                color: activeTab === "teams" ? "#0F172A" : "#64748B",
-              }}
+              style={[
+                styles.tabText,
+                activeTab === "teams" && styles.tabTextActive,
+              ]}
             >
               Teams ({teams.length})
             </Text>
@@ -653,7 +841,7 @@ export default function AdminPanel() {
                 <MaterialCommunityIcons
                   name="account-group"
                   size={20}
-                  color="#4F46E5"
+                  color={c.primaryIcon}
                 />
                 <Text style={styles.statValue}>{userStats.totalUsers}</Text>
                 <Text style={styles.statLabel}>Users</Text>
@@ -663,18 +851,14 @@ export default function AdminPanel() {
                 <MaterialCommunityIcons
                   name="check-circle"
                   size={20}
-                  color="#16A34A"
+                  color={c.success}
                 />
                 <Text style={styles.statValue}>{userStats.onlineUsers}</Text>
                 <Text style={styles.statLabel}>Online</Text>
               </View>
               <View style={styles.statDivider} />
               <View style={styles.statItem}>
-                <MaterialCommunityIcons
-                  name="login"
-                  size={20}
-                  color="#0284C7"
-                />
+                <MaterialCommunityIcons name="login" size={20} color={c.info} />
                 <Text style={styles.statValue}>{userStats.signedInUsers}</Text>
                 <Text style={styles.statLabel}>Signed In</Text>
               </View>
@@ -686,7 +870,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="account-off-outline"
                     size={42}
-                    color="#CBD5E1"
+                    color={c.emptyIcon}
                   />
                   <Text style={styles.emptyText}>No users yet</Text>
                 </View>
@@ -698,7 +882,7 @@ export default function AdminPanel() {
                   return (
                     <View key={String(item.id)} style={styles.row}>
                       <TouchableOpacity
-                        style={styles.rowBody}
+                        style={shared.rowBody}
                         activeOpacity={0.7}
                         disabled={isDeleting}
                         onPress={() => router.push(`/admin/user/${item.id}`)}
@@ -709,7 +893,7 @@ export default function AdminPanel() {
                             { backgroundColor: colorForUser(item.id) },
                           ]}
                         >
-                          <Text style={styles.avatarText}>
+                          <Text style={shared.avatarText}>
                             {item.name?.charAt(0)?.toUpperCase() ?? "?"}
                           </Text>
                         </View>
@@ -720,15 +904,14 @@ export default function AdminPanel() {
                               {item.name}
                             </Text>
 
-                            {/* 👑 ADMIN BADGE — Only Super Admin / Admin */}
                             {isAdminUser(item) && (
-                              <View style={styles.adminLabel}>
+                              <View style={shared.adminLabel}>
                                 <MaterialCommunityIcons
                                   name="crown"
                                   size={13}
-                                  color="#D97706"
+                                  color={c.adminIcon}
                                 />
-                                <Text style={styles.adminLabelText}>
+                                <Text style={shared.adminLabelText}>
                                   {isSuperAdminUser(item)
                                     ? "Super Admin"
                                     : "Admin"}
@@ -736,10 +919,9 @@ export default function AdminPanel() {
                               </View>
                             )}
 
-                            {/* ✅ YOU BADGE — Shows only for logged in user */}
                             {isSelf && (
-                              <View style={styles.youLabel}>
-                                <Text style={styles.youLabelText}>You</Text>
+                              <View style={shared.youLabel}>
+                                <Text style={shared.youLabelText}>You</Text>
                               </View>
                             )}
                           </View>
@@ -748,7 +930,6 @@ export default function AdminPanel() {
                             {item.email}
                           </Text>
 
-                          {/* Steps today */}
                           <View style={styles.userRankRow}>
                             <Text style={styles.userStepsText}>
                               {(item.steps_today ?? 0).toLocaleString()} steps
@@ -772,9 +953,8 @@ export default function AdminPanel() {
                       <View style={styles.actionsWrap}>
                         {!isSelf && (
                           <>
-                            {/* ➕ Add to Team */}
                             <TouchableOpacity
-                              style={styles.addTeamBtn}
+                              style={shared.infoBtn}
                               disabled={isDeleting}
                               onPress={() => openAddToTeam(item.id, item.name)}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -782,27 +962,26 @@ export default function AdminPanel() {
                               <Ionicons
                                 name="add-circle-outline"
                                 size={20}
-                                color="#0284C7"
+                                color={c.info}
                               />
                             </TouchableOpacity>
 
-                            {/* 🗑️ Delete user */}
                             <TouchableOpacity
-                              style={styles.trashBtn}
+                              style={shared.trashBtn}
                               disabled={isDeleting}
                               onPress={() => openDeleteModal("user", item)}
                               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                             >
-                            {isDeleting ? (
+                              {isDeleting ? (
                                 <ActivityIndicator
                                   size="small"
-                                  color="#DC2626"
+                                  color={c.danger}
                                 />
                               ) : (
                                 <Ionicons
                                   name="trash-outline"
                                   size={20}
-                                  color="#DC2626"
+                                  color={c.danger}
                                 />
                               )}
                             </TouchableOpacity>
@@ -856,7 +1035,7 @@ export default function AdminPanel() {
                   <Ionicons
                     name="apps"
                     size={18}
-                    color={selectedTeamId === null ? "#fff" : "#4F46E5"}
+                    color={selectedTeamId === null ? "#fff" : c.primaryIcon}
                   />
                   <Text
                     style={[
@@ -876,11 +1055,9 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="account-group"
                     size={18}
-                    color="#4F46E5"
+                    color={c.primaryIcon}
                   />
-                  <Text style={styles.teamStatValue}>
-                    {activeTeam ? teamCount : teamCount}
-                  </Text>
+                  <Text style={styles.teamStatValue}>{teamCount}</Text>
                   <Text style={styles.teamStatLabel}>Teams</Text>
                 </View>
                 <View style={styles.teamStatDivider} />
@@ -888,7 +1065,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="crown"
                     size={18}
-                    color="#D97706"
+                    color={c.adminIcon}
                   />
                   <Text style={styles.teamStatValue}>{adminTeamCount}</Text>
                   <Text style={styles.teamStatLabel}>Leading</Text>
@@ -898,7 +1075,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="account-multiple"
                     size={18}
-                    color="#0284C7"
+                    color={c.info}
                   />
                   <Text style={styles.teamStatValue}>
                     {activeTeam
@@ -918,7 +1095,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="check-circle"
                     size={18}
-                    color="#16A34A"
+                    color={c.success}
                   />
                   <Text style={styles.teamStatValue}>
                     {activeTeam
@@ -936,7 +1113,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="login"
                     size={18}
-                    color="#0284C7"
+                    color={c.info}
                   />
                   <Text style={styles.teamStatValue}>
                     {activeTeam
@@ -954,7 +1131,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="format-list-numbered"
                     size={18}
-                    color="#475569"
+                    color={c.slate}
                   />
                   <Text style={styles.teamStatValue}>
                     {teamCount}/{MAX_TEAMS}
@@ -970,7 +1147,7 @@ export default function AdminPanel() {
                   <MaterialCommunityIcons
                     name="account-group-outline"
                     size={42}
-                    color="#CBD5E1"
+                    color={c.emptyIcon}
                   />
                   <Text style={styles.emptyText}>No teams yet</Text>
                 </View>
@@ -989,7 +1166,7 @@ export default function AdminPanel() {
                   return (
                     <View key={String(item.id)} style={styles.row}>
                       <TouchableOpacity
-                        style={styles.rowBody}
+                        style={shared.rowBody}
                         activeOpacity={0.7}
                         disabled={isDeleting}
                         onPress={() =>
@@ -1002,7 +1179,7 @@ export default function AdminPanel() {
                         <View
                           style={[
                             styles.avatar,
-                            { backgroundColor: "#4F46E5" },
+                            { backgroundColor: c.primary },
                           ]}
                         >
                           <MaterialCommunityIcons
@@ -1022,34 +1199,34 @@ export default function AdminPanel() {
                             Created {item.created_at_label} •{" "}
                             {item.member_count} members
                           </Text>
-                          <View style={styles.pillRow}>
-                            <View style={styles.statusPill}>
+                          <View style={shared.pillRow}>
+                            <View style={shared.statusPill}>
                               <View
                                 style={[
-                                  styles.statusDot,
-                                  { backgroundColor: "#16A34A" },
+                                  shared.statusDot,
+                                  { backgroundColor: c.success },
                                 ]}
                               />
                               <Text
                                 style={[
-                                  styles.statusPillText,
-                                  { color: "#16A34A" },
+                                  shared.statusPillText,
+                                  { color: c.success },
                                 ]}
                               >
                                 {onlineCount} online
                               </Text>
                             </View>
-                            <View style={styles.statusPill}>
+                            <View style={shared.statusPill}>
                               <View
                                 style={[
-                                  styles.statusDot,
-                                  { backgroundColor: "#0284C7" },
+                                  shared.statusDot,
+                                  { backgroundColor: c.info },
                                 ]}
                               />
                               <Text
                                 style={[
-                                  styles.statusPillText,
-                                  { color: "#0284C7" },
+                                  shared.statusPillText,
+                                  { color: c.info },
                                 ]}
                               >
                                 {signedInCount} signed in
@@ -1061,25 +1238,25 @@ export default function AdminPanel() {
 
                       <View style={styles.actionWrap}>
                         <TouchableOpacity
-                          style={styles.trashBtn}
+                          style={shared.trashBtn}
                           disabled={isDeleting}
                           onPress={() => openDeleteModal("team", item)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
                           {isDeleting ? (
-                            <ActivityIndicator size="small" color="#DC2626" />
+                            <ActivityIndicator size="small" color={c.danger} />
                           ) : (
                             <Ionicons
                               name="trash-outline"
                               size={20}
-                              color="#DC2626"
+                              color={c.danger}
                             />
                           )}
                         </TouchableOpacity>
                         <Ionicons
                           name="chevron-forward"
                           size={22}
-                          color="#94A3B8"
+                          color={c.faint}
                         />
                       </View>
                     </View>
@@ -1098,21 +1275,19 @@ export default function AdminPanel() {
         transparent={true}
         onRequestClose={() => setAddToTeamVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
+        <View style={shared.modalOverlay}>
+          <View style={shared.modalContent}>
+            <View style={shared.modalHeader}>
               <MaterialCommunityIcons
                 name="account-plus"
                 size={36}
-                color="#0284C7"
+                color={c.info}
               />
-              <Text style={styles.modalTitle}>Add to Team</Text>
+              <Text style={shared.modalTitle}>Add to Team</Text>
             </View>
-            <Text style={styles.modalBody}>
+            <Text style={shared.modalBody}>
               Add{" "}
-              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
-                {addToTeamUser?.name}
-              </Text>{" "}
+              <Text style={shared.modalBodyStrong}>{addToTeamUser?.name}</Text>{" "}
               to a team:
             </Text>
 
@@ -1121,15 +1296,7 @@ export default function AdminPanel() {
               showsVerticalScrollIndicator={false}
             >
               {sortedTeams.length === 0 ? (
-                <Text
-                  style={{
-                    textAlign: "center",
-                    color: "#94A3B8",
-                    paddingVertical: 20,
-                  }}
-                >
-                  No teams available
-                </Text>
+                <Text style={styles.noTeamsText}>No teams available</Text>
               ) : (
                 sortedTeams.map((t) => {
                   const selected = addToTeamSelected === t.id;
@@ -1157,7 +1324,7 @@ export default function AdminPanel() {
                         <Ionicons
                           name="checkmark-circle"
                           size={22}
-                          color="#0284C7"
+                          color={c.info}
                         />
                       )}
                     </TouchableOpacity>
@@ -1166,18 +1333,18 @@ export default function AdminPanel() {
               )}
             </ScrollView>
 
-            <View style={styles.modalActions}>
+            <View style={shared.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={shared.modalBtnCancel}
                 onPress={() => setAddToTeamVisible(false)}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text style={shared.modalBtnCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.modalBtnSave,
+                  shared.modalBtnSave,
                   (!addToTeamSelected || isAddingToTeam) && {
-                    backgroundColor: "#7DD3FC",
+                    backgroundColor: c.infoDisabled,
                   },
                 ]}
                 disabled={!addToTeamSelected || isAddingToTeam}
@@ -1186,7 +1353,7 @@ export default function AdminPanel() {
                 {isAddingToTeam ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.modalBtnSaveText}>Add</Text>
+                  <Text style={shared.modalBtnSaveText}>Add</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -1201,42 +1368,40 @@ export default function AdminPanel() {
         transparent={true}
         onRequestClose={() => setDeleteModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
+        <View style={shared.modalOverlay}>
+          <View style={shared.modalContent}>
+            <View style={shared.modalHeader}>
               <MaterialCommunityIcons
                 name="alert-circle"
                 size={36}
-                color="#DC2626"
+                color={c.dangerSolid}
               />
-              <Text style={styles.modalTitle}>
+              <Text style={shared.modalTitle}>
                 Delete {deleteTarget?.type === "user" ? "User" : "Team"}?
               </Text>
             </View>
-            <Text style={styles.modalBody}>
+            <Text style={shared.modalBody}>
               You are about to permanently delete{" "}
-              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
-                {deleteTarget?.name}
-              </Text>{" "}
-              ({deleteTarget?.extraInfo}).
+              <Text style={shared.modalBodyStrong}>{deleteTarget?.name}</Text> (
+              {deleteTarget?.extraInfo}).
             </Text>
             {deleteTarget?.type === "user" && (
-              <Text style={styles.modalSubBody}>
+              <Text style={shared.modalSubBody}>
                 This will erase all their data (steps, tasks, tokens).
               </Text>
             )}
             {deleteTarget?.type === "team" && (
-              <Text style={styles.modalSubBody}>
+              <Text style={shared.modalSubBody}>
                 Users themselves will not be deleted, but all memberships will
                 be removed.
               </Text>
             )}
-            <Text style={styles.modalInstruction}>
+            <Text style={shared.modalInstruction}>
               Please type{" "}
               <Text
                 style={{
                   fontWeight: "bold",
-                  color: "#DC2626",
+                  color: c.dangerSolid,
                   letterSpacing: 1,
                 }}
               >
@@ -1245,32 +1410,33 @@ export default function AdminPanel() {
               to confirm.
             </Text>
             <TextInput
-              style={styles.deleteInput}
+              style={shared.deleteInput}
               placeholder="DELETE"
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
               autoCapitalize="characters"
               autoCorrect={false}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={c.faint}
+              keyboardAppearance={isDark ? "dark" : "light"}
             />
-            <View style={styles.modalActions}>
+            <View style={shared.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={shared.modalBtnCancel}
                 onPress={() => setDeleteModalVisible(false)}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text style={shared.modalBtnCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.modalBtnDelete,
+                  shared.modalBtnDelete,
                   deleteConfirmText !== "DELETE" && {
-                    backgroundColor: "#FCA5A5",
+                    backgroundColor: c.dangerDisabled,
                   },
                 ]}
                 disabled={deleteConfirmText !== "DELETE"}
                 onPress={executeDelete}
               >
-                <Text style={styles.modalBtnDeleteText}>Delete</Text>
+                <Text style={shared.modalBtnDeleteText}>Delete</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1279,360 +1445,3 @@ export default function AdminPanel() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC", paddingHorizontal: 5 },
-
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-  },
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 5,
-    maxWidth: "100%",
-  },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  statusPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
-
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginTop: 8,
-  },
-
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  statItem: { flex: 1, alignItems: "center", gap: 2 },
-  statValue: { fontSize: 16, fontWeight: "800", color: "#0F172A" },
-  statLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
-  statDivider: { width: 1, height: 30, backgroundColor: "#E2E8F0" },
-
-  switcherContainer: { marginBottom: 10, marginTop: 6 },
-  switcherScroll: { gap: 10, paddingVertical: 10, paddingHorizontal: 4 },
-  teamPill: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#E2E8F0",
-  },
-  teamPillActive: { backgroundColor: "#4F46E5" },
-  teamPillText: { fontSize: 14, fontWeight: "600", color: "#475569" },
-  teamPillTextActive: { color: "#fff" },
-  addTeamPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: "#EEF2FF",
-    borderWidth: 1,
-    borderColor: "#C7D2FE",
-  },
-  addTeamPillActive: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  addTeamPillText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#4F46E5",
-    marginLeft: 4,
-  },
-
-  teamStatsCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    marginBottom: 10,
-    gap: 8,
-    marginHorizontal: 16,
-  },
-  teamStatsRowInner: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  teamStatItem: { flex: 1, alignItems: "center", gap: 2 },
-  teamStatValue: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
-  teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
-  teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
-
-  // Steps row (Users tab)
-  userRankRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-    marginBottom: 2,
-    flexWrap: "wrap",
-  },
-  userStepsText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#64748B",
-  },
-
-  pinInputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
-    borderRadius: 10,
-    paddingRight: 10,
-  },
-  pinInput: {
-    flex: 1,
-    padding: 15,
-    fontSize: 20,
-    textAlign: "center",
-    letterSpacing: 5,
-  },
-  eyeIcon: { padding: 5 },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    paddingVertical: 10,
-    paddingLeft: 14,
-    paddingRight: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 3,
-  },
-  rowBody: { flex: 1, flexDirection: "row", alignItems: "center" },
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-  avatarText: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
-  rowText: { flex: 1, minWidth: 0 },
-  rowName: { fontSize: 16, fontWeight: "700", color: "#0F172A" },
-  rowEmail: { fontSize: 13, color: "#475569", marginTop: 1 },
-  rowMeta: {
-    fontSize: 11,
-    color: "#94A3B8",
-    marginTop: 4,
-    fontWeight: "600",
-  },
-
-  userNameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  adminLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    gap: 3,
-  },
-  adminLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#92400E",
-  },
-  youLabel: {
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  youLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-
-  actionsWrap: {
-    alignItems: "center",
-    gap: 10,
-    paddingLeft: 6,
-    paddingRight: 6,
-  },
-  actionWrap: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 10,
-    paddingLeft: 6,
-    paddingRight: 6,
-  },
-  trashBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  teamSelectRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    backgroundColor: "#F8FAFC",
-    marginBottom: 8,
-  },
-  teamSelectRowActive: {
-    borderColor: "#0284C7",
-    backgroundColor: "#E0F2FE",
-  },
-  teamSelectName: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-  teamSelectMeta: {
-    fontSize: 11,
-    color: "#64748B",
-    marginTop: 2,
-  },
-  modalBtnSave: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#0284C7",
-    alignItems: "center",
-  },
-  modalBtnSaveText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
-
-  addTeamBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#E0F2FE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  emptyBlock: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 60,
-    gap: 8,
-  },
-  emptyText: { color: "#94A3B8", fontSize: 14, fontWeight: "600" },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 400,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  modalHeader: { alignItems: "center", marginBottom: 16 },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginTop: 8,
-  },
-  modalBody: {
-    fontSize: 15,
-    color: "#475569",
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 4,
-  },
-  modalSubBody: {
-    fontSize: 13,
-    color: "#64748B",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  modalInstruction: {
-    fontSize: 14,
-    color: "#475569",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  deleteInput: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 18,
-    textAlign: "center",
-    fontWeight: "700",
-    letterSpacing: 2,
-    color: "#0F172A",
-    marginBottom: 24,
-  },
-  modalActions: { flexDirection: "row", gap: 12 },
-  modalBtnCancel: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-  },
-  modalBtnCancelText: { color: "#64748B", fontWeight: "700", fontSize: 15 },
-  modalBtnDelete: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-  },
-  modalBtnDeleteText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
-});

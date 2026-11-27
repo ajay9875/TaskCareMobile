@@ -13,71 +13,17 @@ import {
   View,
 } from "react-native";
 import Svg, { Circle } from "react-native-svg";
-import { useAuth } from "../../../context/AuthContext"; // 🔥 Make sure this path is correct
+import { useAuth } from "../../../context/AuthContext";
+import { useTheme } from "../../../context/ThemeContext";
+import {
+  getFitColors,
+  getFitStyles,
+  type FitColors,
+} from "../../../utils/fitTheme";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
-const CustomProgressRing = ({ percentage }: { percentage: number }) => {
-  const radius = 42;
-  const strokeWidth = 6;
-  const circumference = 2 * Math.PI * radius;
-  const safePercent = isNaN(percentage)
-    ? 0
-    : Math.min(100, Math.max(0, percentage));
-  const strokeDashoffset = circumference - (safePercent / 100) * circumference;
-
-  return (
-    <View
-      style={{
-        width: 100,
-        height: 100,
-        alignItems: "center",
-        justifyContent: "center",
-        marginVertical: 10,
-      }}
-    >
-      <Svg
-        width="100"
-        height="100"
-        viewBox="0 0 100 100"
-        style={{ transform: [{ rotate: "-90deg" }] }}
-      >
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#ffffff15"
-          strokeWidth={strokeWidth}
-          fill="none"
-        />
-        <Circle
-          cx="50"
-          cy="50"
-          r={radius}
-          stroke="#4ecca3"
-          strokeWidth={strokeWidth}
-          fill="none"
-          strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
-          strokeLinecap="round"
-        />
-      </Svg>
-      <View
-        style={{
-          position: "absolute",
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <Text style={{ fontSize: 18, fontWeight: "800", color: "#ffffff" }}>
-          {Math.round(safePercent)}%
-        </Text>
-      </View>
-    </View>
-  );
-};
-
-// 🔥 Helper to check for Team Admin status (Exact match from admin team file)
+// Team admin check
 function isTeamAdmin(member: any): boolean {
   const role = (member?.role ?? "").toLowerCase();
 
@@ -106,6 +52,80 @@ type MemberInfo = {
   team_admin?: boolean;
 };
 
+// Styles that only this screen needs (shared ones live in utils/fitTheme.ts)
+function createMemberStyles(c: FitColors) {
+  return StyleSheet.create({
+    metaPill: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.chipBg,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+      gap: 5,
+    },
+    metaDot: { width: 6, height: 6, borderRadius: 3 },
+    metaPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
+    userHeaderCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surface,
+      borderRadius: 18,
+      padding: 14,
+      marginBottom: 16,
+      borderWidth: 1.5,
+      borderColor: c.border,
+    },
+    userAvatar: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+      backgroundColor: c.accent,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    userAvatarText: { color: "#0f0f0f", fontSize: 22, fontWeight: "800" },
+    nameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+      marginBottom: 2,
+    },
+    adminLabel: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.adminBg,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+      gap: 3,
+    },
+    adminLabelText: { fontSize: 10, fontWeight: "800", color: c.adminText },
+    youLabel: {
+      backgroundColor: c.youBg,
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    youLabelText: { fontSize: 10, fontWeight: "800", color: c.youText },
+    userName: { color: c.text, fontSize: 18, fontWeight: "800" },
+    userEmail: { color: c.muted, fontSize: 13, marginTop: 2 },
+    userId: {
+      color: c.accentText,
+      fontSize: 11,
+      marginTop: 4,
+      fontWeight: "700",
+      letterSpacing: 0.6,
+    },
+  });
+}
+
+const lightMemberStyles = createMemberStyles(getFitColors(false));
+const darkMemberStyles = createMemberStyles(getFitColors(true));
+
 export default function TeamMemberHistory() {
   const { idx, team_id } = useLocalSearchParams<{
     idx: string;
@@ -114,8 +134,14 @@ export default function TeamMemberHistory() {
   const id = idx;
   const router = useRouter();
 
-  // 🔥 Get the currently logged in user
   const { user: currentUser } = useAuth();
+
+  // Theme
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = getFitColors(isDark);
+  const styles = getFitStyles(isDark);
+  const ms = isDark ? darkMemberStyles : lightMemberStyles;
 
   const [userInfo, setUserInfo] = useState<MemberInfo | null>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -123,11 +149,20 @@ export default function TeamMemberHistory() {
   const [summary, setSummary] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [hasNetError, setHasNetError] = useState(false);
+
+  // Status stores only the state; the color is resolved at render time so it
+  // follows the theme.
   const [status, setStatus] = useState<{
-    state: "online" | "offline" | "never";
+    state: "online" | "offline" | "never" | "signed_out";
     label: string;
-    color: string;
   } | null>(null);
+
+  const statusColor = (state?: string) =>
+    state === "online"
+      ? c.success
+      : state === "signed_out"
+        ? c.danger
+        : c.neutral;
 
   useEffect(() => {
     fetchMemberHistory();
@@ -160,7 +195,6 @@ export default function TeamMemberHistory() {
     const timeoutId = setTimeout(() => controller.abort(), 10000);
 
     try {
-      // ✅ Team-admin scoped endpoint
       const res = await fetch(
         `${API_BASE}/teams/member/${id}/history?team_id=${team_id}`,
         {
@@ -205,11 +239,6 @@ export default function TeamMemberHistory() {
           label: isOnline
             ? "Active now"
             : (json.user?.status_label ?? "Not active yet"),
-          color: isOnline
-            ? "#16A34A"
-            : json.user?.status_state === "signed_out"
-              ? "#DC2626"
-              : "#94A3B8",
         });
 
         setTarget(json.user?.target_steps ?? 5000);
@@ -228,44 +257,43 @@ export default function TeamMemberHistory() {
     if (!userInfo) return null;
     const initial = userInfo.name?.trim().charAt(0).toUpperCase() || "?";
     const signedInLabel = userInfo.is_signed_in ? "Signed In" : "Signed Out";
-    const signedInColor = userInfo.is_signed_in ? "#16A34A" : "#DC2626";
+    const signedInColor = userInfo.is_signed_in ? c.success : c.danger;
 
-    // 🔥 Badge Logic
     const isAdmin = isTeamAdmin(userInfo);
     const isYou = Number(currentUser?.id) === Number(userInfo.id);
+    const sColor = statusColor(status?.state);
 
     return (
-      <View style={styles.userHeaderCard}>
-        <View style={styles.userAvatar}>
-          <Text style={styles.userAvatarText}>{initial}</Text>
+      <View style={ms.userHeaderCard}>
+        <View style={ms.userAvatar}>
+          <Text style={ms.userAvatarText}>{initial}</Text>
         </View>
         <View style={{ flex: 1, marginLeft: 14 }}>
-          {/* 🔥 Badge Row Container */}
-          <View style={styles.nameRow}>
-            <Text style={styles.userName}>{userInfo.name}</Text>
+          <View style={ms.nameRow}>
+            <Text style={ms.userName}>{userInfo.name}</Text>
 
             {isAdmin && (
-              <View style={styles.adminLabel}>
+              <View style={ms.adminLabel}>
                 <MaterialCommunityIcons
                   name="crown"
                   size={13}
-                  color="#D97706"
+                  color={c.adminIcon}
                 />
-                <Text style={styles.adminLabelText}>Admin</Text>
+                <Text style={ms.adminLabelText}>Admin</Text>
               </View>
             )}
 
             {isYou && (
-              <View style={styles.youLabel}>
-                <Text style={styles.youLabelText}>You</Text>
+              <View style={ms.youLabel}>
+                <Text style={ms.youLabelText}>You</Text>
               </View>
             )}
           </View>
 
-          <Text style={styles.userEmail} numberOfLines={1}>
+          <Text style={ms.userEmail} numberOfLines={1}>
             {userInfo.email}
           </Text>
-          <Text style={styles.userId}>User ID #{userInfo.id}</Text>
+          <Text style={ms.userId}>User ID #{userInfo.id}</Text>
           <View
             style={{
               flexDirection: "row",
@@ -275,26 +303,22 @@ export default function TeamMemberHistory() {
             }}
           >
             {status && (
-              <View style={styles.metaPill}>
-                <View
-                  style={[styles.metaDot, { backgroundColor: status.color }]}
-                />
-                <Text style={[styles.metaPillText, { color: status.color }]}>
+              <View style={ms.metaPill}>
+                <View style={[ms.metaDot, { backgroundColor: sColor }]} />
+                <Text style={[ms.metaPillText, { color: sColor }]}>
                   {status.label}
                 </Text>
               </View>
             )}
-            <View style={styles.metaPill}>
-              <View
-                style={[styles.metaDot, { backgroundColor: signedInColor }]}
-              />
-              <Text style={[styles.metaPillText, { color: signedInColor }]}>
+            <View style={ms.metaPill}>
+              <View style={[ms.metaDot, { backgroundColor: signedInColor }]} />
+              <Text style={[ms.metaPillText, { color: signedInColor }]}>
                 {signedInLabel}
               </Text>
             </View>
-            <View style={styles.metaPill}>
-              <Ionicons name="flag-outline" size={11} color="#4ecca3" />
-              <Text style={[styles.metaPillText, { color: "#4ecca3" }]}>
+            <View style={ms.metaPill}>
+              <Ionicons name="flag-outline" size={11} color={c.accentText} />
+              <Text style={[ms.metaPillText, { color: c.accentText }]}>
                 Target {(userInfo.target_steps ?? 5000).toLocaleString()}
               </Text>
             </View>
@@ -313,7 +337,7 @@ export default function TeamMemberHistory() {
             <MaterialCommunityIcons
               name="trophy-outline"
               size={20}
-              color="#4ecca3"
+              color={c.accentText}
             />
           </View>
           <View style={styles.summaryTitleTextContainer}>
@@ -328,13 +352,12 @@ export default function TeamMemberHistory() {
           </View>
         </View>
 
-        {/* ✅ Triple Metric Strip matching app/history.tsx */}
         <View style={styles.summaryTotalStrip}>
           <View style={styles.stripMetric}>
             <MaterialCommunityIcons
               name="shoe-print"
               size={16}
-              color="#4ecca3"
+              color={c.accentText}
             />
             <Text style={styles.stripLabel}>STEPS</Text>
             <Text style={styles.stripVal}>
@@ -348,7 +371,7 @@ export default function TeamMemberHistory() {
             <MaterialCommunityIcons
               name="map-marker-distance"
               size={16}
-              color="#4ecca3"
+              color={c.accentText}
             />
             <Text style={styles.stripLabel}>DISTANCE</Text>
             <Text style={styles.stripVal}>
@@ -363,7 +386,7 @@ export default function TeamMemberHistory() {
             <MaterialCommunityIcons
               name="calendar-check"
               size={16}
-              color="#4ecca3"
+              color={c.accentText}
             />
             <Text style={styles.stripLabel}>DAYS ACTIVE</Text>
             <Text style={styles.stripVal}>
@@ -402,7 +425,6 @@ export default function TeamMemberHistory() {
     const stepsLeft = Math.max(0, dayTarget - walkSteps);
     const percentage = Math.min(100, (walkSteps / dayTarget) * 100);
 
-    // Thin Ring Math
     const radius = 38;
     const strokeWidth = 5;
     const circumference = 2 * Math.PI * radius;
@@ -415,7 +437,11 @@ export default function TeamMemberHistory() {
         <View style={styles.modeSplitRow}>
           <View style={[styles.modeColumn, { flex: 1.1 }]}>
             <View style={styles.columnHeadingRow}>
-              <MaterialCommunityIcons name="walk" size={18} color="#4ecca3" />
+              <MaterialCommunityIcons
+                name="walk"
+                size={18}
+                color={c.accentText}
+              />
               <Text style={styles.columnHeading}>WALKING</Text>
             </View>
             <View style={styles.modeStatBlock}>
@@ -427,29 +453,19 @@ export default function TeamMemberHistory() {
                 {walkKm} <Text style={styles.unitText}>KM</Text>
               </Text>
               <Text style={styles.modeStatLabel}>DISTANCE</Text>
-              <Text style={[styles.modeStatVal, { color: "#ff6b35" }]}>
+              <Text style={[styles.modeStatVal, { color: c.orange }]}>
                 {walkCal} <Text style={styles.unitText}>CAL</Text>
               </Text>
               <Text style={styles.modeStatLabel}>ENERGY</Text>
             </View>
           </View>
 
-          <View
-            style={[
-              styles.modeColumn,
-              {
-                borderLeftWidth: 1,
-                borderColor: "#ffffff15",
-                paddingLeft: 15,
-                flex: 0.9,
-              },
-            ]}
-          >
+          <View style={[styles.modeColumn, styles.modeColumnDivided]}>
             <View style={styles.columnHeadingRow}>
               <MaterialCommunityIcons
                 name="speedometer"
                 size={18}
-                color="#4ecca3"
+                color={c.accentText}
               />
               <Text style={styles.columnHeading}>METRICS</Text>
             </View>
@@ -458,7 +474,7 @@ export default function TeamMemberHistory() {
               <Text style={styles.modeStatLabel}>PACE (MIN/KM)</Text>
               <Text style={styles.modeStatVal}>{stepsPerKm}</Text>
               <Text style={styles.modeStatLabel}>STEPS / KM</Text>
-              <Text style={[styles.modeStatVal, { color: "#4ecca3" }]}>
+              <Text style={[styles.modeStatVal, { color: c.accentText }]}>
                 {Math.round(percentage)}%{" "}
                 <Text style={styles.unitText}>DONE</Text>
               </Text>
@@ -472,10 +488,13 @@ export default function TeamMemberHistory() {
         <Text style={styles.combinedHeading}>DAILY GOAL PROGRESS</Text>
 
         <View style={styles.progressLayoutWrapper}>
-          {/* Left side: Numbers */}
           <View style={styles.numbersColumn}>
             <View style={styles.stepMetricItem}>
-              <Ionicons name="checkmark-circle" size={18} color="#4ecca3" />
+              <Ionicons
+                name="checkmark-circle"
+                size={18}
+                color={c.accentText}
+              />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
                   {walkSteps.toLocaleString()}
@@ -488,13 +507,13 @@ export default function TeamMemberHistory() {
               <Ionicons
                 name="flag"
                 size={18}
-                color={stepsLeft === 0 ? "#4ecca3" : "#ff6b35"}
+                color={stepsLeft === 0 ? c.accentText : c.orange}
               />
               <View style={styles.textDataContainer}>
                 <Text
                   style={[
                     styles.stepText,
-                    stepsLeft === 0 && { color: "#4ecca3" },
+                    stepsLeft === 0 && { color: c.accentText },
                   ]}
                 >
                   {stepsLeft.toLocaleString()}
@@ -504,7 +523,7 @@ export default function TeamMemberHistory() {
             </View>
 
             <View style={[styles.stepMetricItem, { marginTop: 12 }]}>
-              <Ionicons name="trending-up" size={18} color="#4ecca3" />
+              <Ionicons name="trending-up" size={18} color={c.accentText} />
               <View style={styles.textDataContainer}>
                 <Text style={styles.stepText}>
                   {dayTarget.toLocaleString()}
@@ -514,7 +533,6 @@ export default function TeamMemberHistory() {
             </View>
           </View>
 
-          {/* Right side: Thin Ring */}
           <View style={styles.thinRingWrapper}>
             <Svg
               width="90"
@@ -526,7 +544,7 @@ export default function TeamMemberHistory() {
                 cx="45"
                 cy="45"
                 r={radius}
-                stroke="#ffffff08"
+                stroke={c.ringTrack}
                 strokeWidth={strokeWidth}
                 fill="none"
               />
@@ -534,7 +552,7 @@ export default function TeamMemberHistory() {
                 cx="45"
                 cy="45"
                 r={radius}
-                stroke="#4ecca3"
+                stroke={c.accent}
                 strokeWidth={strokeWidth}
                 fill="none"
                 strokeDasharray={circumference}
@@ -556,61 +574,37 @@ export default function TeamMemberHistory() {
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: "center" }]}>
-        <ActivityIndicator size="large" color="#4ecca3" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
   }
 
   return (
-    <LinearGradient colors={["#1a1a2e", "#16213e"]} style={styles.container}>
+    <LinearGradient colors={c.gradient} style={styles.container}>
       <Text style={styles.headerTitle}>👥 Member History</Text>
 
       {hasNetError ? (
-        <View
-          style={{
-            flex: 0.8,
-            justifyContent: "center",
-            alignItems: "center",
-            paddingHorizontal: 30,
-          }}
-        >
+        <View style={styles.errorWrap}>
           <MaterialCommunityIcons
             name="wifi-strength-alert-outline"
             size={70}
-            color="#ff6b35"
+            color={c.orange}
             style={{ marginBottom: 16 }}
           />
-          <Text
-            style={{
-              color: "#ffffff",
-              fontSize: 20,
-              fontWeight: "800",
-              marginBottom: 8,
-              textAlign: "center",
-            }}
-          >
-            Could Not Load History
-          </Text>
+          <Text style={styles.errorTitle}>Could Not Load History</Text>
           <TouchableOpacity
-            style={{
-              borderColor: "#4ecca3",
-              borderWidth: 1.5,
-              paddingVertical: 12,
-              paddingHorizontal: 28,
-              borderRadius: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
+            style={styles.retryBtn}
             onPress={() => {
               setLoading(true);
               fetchMemberHistory();
             }}
           >
-            <MaterialCommunityIcons name="refresh" size={18} color="#4ecca3" />
-            <Text style={{ color: "#4ecca3", fontWeight: "700", fontSize: 14 }}>
-              Try Again
-            </Text>
+            <MaterialCommunityIcons
+              name="refresh"
+              size={18}
+              color={c.accentText}
+            />
+            <Text style={styles.retryText}>Try Again</Text>
           </TouchableOpacity>
         </View>
       ) : (
@@ -618,6 +612,7 @@ export default function TeamMemberHistory() {
           data={history}
           keyExtractor={(item) => item.date_iso ?? item.date}
           renderItem={renderDayBlock}
+          extraData={isDark}
           ListHeaderComponent={
             <>
               {renderUserHeader()}
@@ -632,359 +627,3 @@ export default function TeamMemberHistory() {
     </LinearGradient>
   );
 }
-
-const styles = StyleSheet.create({
-  progressLayoutWrapper: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    width: "100%",
-  },
-  numbersColumn: {
-    flexDirection: "column",
-    justifyContent: "center",
-  },
-  thinRingWrapper: {
-    width: 90,
-    height: 90,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  ringTextContainer: {
-    position: "absolute",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  ringPercentText: {
-    color: "#ffffff",
-    fontSize: 14,
-    fontWeight: "600",
-    letterSpacing: 0,
-  },
-  container: { flex: 1, paddingTop: 25, backgroundColor: "#0f0f0f" },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    textAlign: "center",
-    marginBottom: 16,
-    color: "#ffffff",
-    letterSpacing: 0.5,
-    textShadowColor: "rgba(78, 204, 163, 0.3)",
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 10,
-  },
-  metaPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff10",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#ffffff18",
-    gap: 5,
-  },
-  metaDot: { width: 6, height: 6, borderRadius: 3 },
-  metaPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
-  listPadding: { paddingHorizontal: 16, paddingBottom: 30 },
-  userHeaderCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff09",
-    borderRadius: 18,
-    padding: 14,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: "#ffffff15",
-  },
-  userAvatar: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: "#4ecca3",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  userAvatarText: { color: "#0f0f0f", fontSize: 22, fontWeight: "800" },
-
-  // 🔥 EXACT STYLES FROM ADMIN TEAM FILE
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-    marginBottom: 2,
-  },
-  adminLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    gap: 3,
-  },
-  adminLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#92400E",
-  },
-  youLabel: {
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-  youLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-
-  userName: { color: "#ffffff", fontSize: 18, fontWeight: "800" },
-  userEmail: { color: "#a4b0be", fontSize: 13, marginTop: 2 },
-  userId: {
-    color: "#4ecca3",
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-  },
-  summaryDaysText: {
-    color: "#4ecca3",
-    fontSize: 11,
-    marginTop: 2,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  summaryCard: {
-    backgroundColor: "#1a1a1a",
-    borderRadius: 20,
-    padding: 18,
-    marginBottom: 24,
-    borderWidth: 1.5,
-    borderColor: "#4ecca340",
-    elevation: 5,
-    shadowColor: "#4ecca3",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  summaryTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#4ecca320",
-  },
-  summaryIconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#4ecca315",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  summaryTitleTextContainer: { flex: 1 },
-  summaryTitleText: {
-    color: "#4ecca3",
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  summaryTitleSubtext: {
-    color: "#a4b0be",
-    fontSize: 11,
-    marginTop: 2,
-    fontWeight: "500",
-  },
-  summarySplitRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  summaryColumn: { flex: 1, paddingRight: 10 },
-  summaryColumnDivider: {
-    borderLeftWidth: 1,
-    borderLeftColor: "#4ecca320",
-    paddingLeft: 14,
-  },
-  summaryColHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    marginBottom: 4,
-  },
-  summaryColLabel: {
-    color: "#4ecca3",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-  summaryColVal: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "800",
-    marginTop: 4,
-    letterSpacing: 0.5,
-  },
-  summarySubVal: {
-    color: "#a4b0be",
-    fontSize: 11,
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  summaryTotalStrip: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#00000040",
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#ffffff10",
-  },
-  stripMetric: { alignItems: "center", flex: 1, gap: 2 },
-  stripMetricDivider: { width: 1, height: "70%", backgroundColor: "#ffffff15" },
-  stripLabel: {
-    color: "#a4b0be",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-    marginTop: 4,
-  },
-  stripVal: { color: "#ffffff", fontSize: 16, fontWeight: "800", marginTop: 4 },
-  card: {
-    backgroundColor: "#ffffff09",
-    padding: 18,
-    borderRadius: 22,
-    marginBottom: 16,
-    borderWidth: 1.5,
-    borderColor: "#ffffff15",
-  },
-  dateText: {
-    fontSize: 17,
-    color: "#ffffff",
-    fontWeight: "800",
-    marginBottom: 16,
-    letterSpacing: 0.3,
-  },
-  modeSplitRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  modeColumn: { flex: 1, paddingRight: 5 },
-  columnHeadingRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 12,
-  },
-  columnHeading: {
-    color: "#4ecca3",
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-  modeStatBlock: {
-    backgroundColor: "#ffffff04",
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#ffffff08",
-  },
-  modeStatVal: {
-    color: "#ffffff",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 4,
-  },
-  modeStatLabel: {
-    color: "#a4b0be",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-    marginBottom: 6,
-  },
-  unitText: { fontSize: 11, color: "#a4b0be", fontWeight: "500" },
-  combinedDivider: {
-    height: 1.5,
-    backgroundColor: "#ffffff15",
-    marginVertical: 16,
-  },
-  combinedHeading: {
-    color: "#4ecca3",
-    fontSize: 13,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    marginBottom: 14,
-    textAlign: "left",
-  },
-  combinedContent: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  combinedMetrics: { flex: 1.1, paddingRight: 5 },
-  stepMetricItem: { flexDirection: "row", alignItems: "center", gap: 12 },
-  textDataContainer: { flexDirection: "column" },
-  stepText: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#ffffff",
-    lineHeight: 24,
-  },
-  stepMetricLabel: {
-    color: "#a4b0be",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 0.6,
-    marginTop: 2,
-  },
-  imageRingContainer: {
-    flex: 0.9,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingLeft: 10,
-  },
-  imageSeparatorLine: {
-    width: "85%",
-    height: 1,
-    backgroundColor: "#ffffff15",
-    marginVertical: 14,
-  },
-  imageMetricsArea: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imageMetricBadgeRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  imageStatText: { color: "#ffffff", fontSize: 18, fontWeight: "700" },
-  imageLabelText: { color: "#a4b0be", fontSize: 14, fontWeight: "600" },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 100,
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#ffffff",
-    marginBottom: 10,
-  },
-  emptySubtitle: {
-    fontSize: 15,
-    color: "#a4b0be",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-});

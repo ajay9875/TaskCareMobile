@@ -1,3 +1,4 @@
+// app/steps.tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { LinearGradient } from "expo-linear-gradient";
@@ -18,6 +19,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useTheme } from "../context/ThemeContext";
 import { recoverMissedSteps, updateNativeTarget } from "../utils/stepTracker";
 
 let ExpoPedometer: any = null;
@@ -30,7 +32,287 @@ try {
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const BATTERY_PROMPT_KEY = "@taskcare360_battery_prompt_shown";
 
+/* ------------------------------------------------------------------ */
+/* Theme                                                               */
+/* ------------------------------------------------------------------ */
+function getColors(isDark: boolean) {
+  return {
+    gradient: (isDark ? ["#000000", "#111111"] : ["#F8FAFC", "#E8EEF6"]) as [
+      string,
+      string,
+    ],
+    errorGradient: (isDark
+      ? ["#1a1a2e", "#16213e"]
+      : ["#F8FAFC", "#E8EEF6"]) as [string, string],
+    bg: isDark ? "#000000" : "#F8FAFC",
+    errorBg: isDark ? "#1a1a2e" : "#F8FAFC",
+    text: isDark ? "#ffffff" : "#0F172A",
+    muted: isDark ? "#a4b0be" : "#64748B",
+    label: isDark ? "#95a5a6" : "#64748B",
+    accent: "#4ecca3",
+    accentText: isDark ? "#4ecca3" : "#0F766E",
+    orange: isDark ? "#ff6b35" : "#EA580C",
+    card: isDark ? "#000000" : "#FFFFFF",
+    cardBorder: isDark ? "#ffffff15" : "#E2E8F0",
+    statsBg: isDark ? "#ffffff08" : "#FFFFFF",
+    statsBorder: isDark ? "#ffffff00" : "#E2E8F0",
+    divider: isDark ? "#ffffff20" : "#E2E8F0",
+    chipBg: isDark ? "#ffffff10" : "#F1F5F9",
+    chipBorder: isDark ? "#ffffff20" : "#E2E8F0",
+    track: isDark ? "#ffffff15" : "#E2E8F0",
+    progressText: isDark ? "#f7f6f6" : "#0F172A",
+    outlineBorder: isDark ? "#4ecca360" : "#14B8A6",
+    popupBg: isDark ? "#111111" : "#FFFFFF",
+    popupBorder: isDark ? "#ffffff15" : "#E2E8F0",
+    inputBg: isDark ? "#ffffff08" : "#F8FAFC",
+    overlay: isDark ? "rgba(0, 0, 0, 0.75)" : "rgba(15, 23, 42, 0.5)",
+    liveGreen: "#2ecc71",
+  };
+}
+type Colors = ReturnType<typeof getColors>;
+
+function createStyles(c: Colors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, paddingHorizontal: 15, justifyContent: "center" },
+    centeredContent: { flex: 0, justifyContent: "center", gap: 0 },
+    pageHeaderBlock: { alignItems: "center", marginTop: 0, marginBottom: 10 },
+    pageHeaderTitle: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: c.text,
+      marginTop: 8,
+      letterSpacing: -0.5,
+    },
+    pageHeaderSubtitle: {
+      fontSize: 13,
+      color: c.muted,
+      marginTop: 4,
+      fontWeight: "500",
+    },
+    header: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    liveBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.chipBg,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: c.chipBorder,
+    },
+    liveDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+      backgroundColor: c.liveGreen,
+      marginRight: 6,
+    },
+    liveText: { color: c.text, fontSize: 12, fontWeight: "bold" },
+    timeText: { color: c.text, fontSize: 18, fontWeight: "bold" },
+    mainProgressArea: {
+      marginVertical: 25,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.card,
+      borderRadius: 20,
+      paddingVertical: 25,
+      paddingHorizontal: 20,
+      borderWidth: 1,
+      borderColor: c.cardBorder,
+    },
+    stepCount: {
+      fontSize: 44,
+      fontWeight: "300",
+      color: c.text,
+      marginVertical: 4,
+      letterSpacing: -1.5,
+      textShadowColor: isDark ? "rgba(78, 204, 163, 0.4)" : "transparent",
+      textShadowOffset: { width: 0, height: 4 },
+      textShadowRadius: 12,
+    },
+    stepLabel: {
+      color: c.accentText,
+      fontSize: 12,
+      fontWeight: "700",
+      letterSpacing: 2,
+    },
+    progressBarBg: {
+      height: 16,
+      width: "100%",
+      backgroundColor: c.track,
+      borderRadius: 8,
+      marginTop: 20,
+      overflow: "hidden",
+      justifyContent: "center",
+      position: "relative",
+    },
+    progressBarFill: {
+      height: "100%",
+      backgroundColor: c.accent,
+      borderRadius: 8,
+    },
+    progressBarText: {
+      position: "absolute",
+      alignSelf: "center",
+      color: c.progressText,
+      fontSize: 10,
+      fontWeight: "900",
+      letterSpacing: 0.5,
+    },
+    statsGrid: {
+      flexDirection: "row",
+      backgroundColor: c.statsBg,
+      borderRadius: 15,
+      borderWidth: isDark ? 0 : 1,
+      borderColor: c.statsBorder,
+      paddingVertical: 15,
+      paddingHorizontal: 5,
+      marginBottom: 20,
+      justifyContent: "space-between",
+    },
+    statItem: { flex: 1, alignItems: "center", paddingHorizontal: 2 },
+    statItemDivided: {
+      borderLeftWidth: 1,
+      borderRightWidth: 1,
+      borderColor: c.divider,
+    },
+    statVal: {
+      color: c.text,
+      fontSize: 15,
+      fontWeight: "bold",
+      marginTop: 4,
+      textAlign: "center",
+    },
+    statLabel: {
+      color: c.label,
+      fontSize: 10,
+      fontWeight: "600",
+      marginTop: 2,
+    },
+    buttonContainer: { marginBottom: 20, paddingHorizontal: 5 },
+    outlineBtn: {
+      flex: 1,
+      borderWidth: 1.5,
+      borderColor: c.outlineBorder,
+      paddingVertical: 12,
+      borderRadius: 12,
+      flexDirection: "row",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 8,
+    },
+    outlineBtnText: { color: c.text, fontWeight: "600", fontSize: 14 },
+    secondaryRow: {
+      flexDirection: "row",
+      gap: 12,
+      justifyContent: "space-around",
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: c.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 25,
+    },
+    popupCard: {
+      backgroundColor: c.popupBg,
+      width: "100%",
+      borderRadius: 20,
+      padding: 22,
+      alignItems: "center",
+      borderWidth: 1,
+      borderColor: c.popupBorder,
+      elevation: 10,
+    },
+    popupTitle: {
+      color: c.text,
+      fontSize: 18,
+      fontWeight: "bold",
+      marginBottom: 18,
+    },
+    popupInput: {
+      backgroundColor: c.inputBg,
+      width: "60%",
+      height: 50,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: c.accent,
+      color: c.text,
+      fontSize: 22,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 5,
+    },
+    popupDivider: {
+      width: "100%",
+      height: 1,
+      backgroundColor: c.cardBorder,
+      marginVertical: 15,
+    },
+    popupActions: { flexDirection: "row", gap: 12, width: "100%" },
+    popupBtn: {
+      flex: 1,
+      height: 48,
+      borderRadius: 12,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    cancelBtn: { backgroundColor: c.chipBg },
+    cancelBtnText: { color: c.text, fontWeight: "600", fontSize: 15 },
+    saveBtn: { backgroundColor: c.accent },
+    saveBtnText: { color: "#000000", fontWeight: "bold", fontSize: 15 },
+
+    // Error state
+    errorWrap: {
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 30,
+    },
+    errorTitle: {
+      color: c.text,
+      fontSize: 22,
+      fontWeight: "800",
+      marginBottom: 10,
+      textAlign: "center",
+    },
+    errorText: {
+      color: c.muted,
+      fontSize: 15,
+      textAlign: "center",
+      lineHeight: 22,
+      marginBottom: 30,
+    },
+    retryBtn: {
+      backgroundColor: c.accent,
+      paddingVertical: 14,
+      paddingHorizontal: 36,
+      borderRadius: 12,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    retryText: { color: "#1a1a2e", fontWeight: "bold", fontSize: 15 },
+  });
+}
+
+const lightColors = getColors(false);
+const darkColors = getColors(true);
+const lightStyles = createStyles(lightColors, false);
+const darkStyles = createStyles(darkColors, true);
+
+/* ------------------------------------------------------------------ */
+/* Screen                                                              */
+/* ------------------------------------------------------------------ */
 export default function StepsScreen() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = isDark ? darkColors : lightColors;
+  const styles = isDark ? darkStyles : lightStyles;
+
   const [walkingSteps, setWalkingSteps] = useState(0);
   const [targetSteps, setTargetSteps] = useState(5000);
   const [loading, setLoading] = useState(true);
@@ -381,18 +663,18 @@ export default function StepsScreen() {
       <View
         style={[
           styles.container,
-          { backgroundColor: "#1a1a2e", justifyContent: "center" },
+          { backgroundColor: c.errorBg, justifyContent: "center" },
         ]}
       >
-        <ActivityIndicator size="large" color="#4ecca3" />
+        <ActivityIndicator size="large" color={c.accent} />
       </View>
     );
 
   if (hasNetError) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: "#1a1a2e" }}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: c.errorBg }}>
         <LinearGradient
-          colors={["#1a1a2e", "#16213e"]}
+          colors={c.errorGradient}
           style={[
             styles.container,
             {
@@ -405,52 +687,20 @@ export default function StepsScreen() {
           <MaterialCommunityIcons
             name="cloud-off-outline"
             size={80}
-            color="#ff6b35"
+            color={c.orange}
             style={{ marginBottom: 20 }}
           />
-          <Text
-            style={{
-              color: "#ffffff",
-              fontSize: 22,
-              fontWeight: "800",
-              marginBottom: 10,
-              textAlign: "center",
-            }}
-          >
-            Sync Connection Error
-          </Text>
-          <Text
-            style={{
-              color: "#a4b0be",
-              fontSize: 15,
-              textAlign: "center",
-              lineHeight: 22,
-              marginBottom: 30,
-            }}
-          >
-            Could not load the data.
-          </Text>
+          <Text style={styles.errorTitle}>Sync Connection Error</Text>
+          <Text style={styles.errorText}>Could not load the data.</Text>
           <TouchableOpacity
-            style={{
-              backgroundColor: "#4ecca3",
-              paddingVertical: 14,
-              paddingHorizontal: 36,
-              borderRadius: 12,
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-            }}
+            style={styles.retryBtn}
             onPress={() => {
               setLoading(true);
               fetchCloudMetrics();
             }}
           >
             <MaterialCommunityIcons name="refresh" size={20} color="#1a1a2e" />
-            <Text
-              style={{ color: "#1a1a2e", fontWeight: "bold", fontSize: 15 }}
-            >
-              Retry Connection
-            </Text>
+            <Text style={styles.retryText}>Retry Connection</Text>
           </TouchableOpacity>
         </LinearGradient>
       </SafeAreaView>
@@ -465,8 +715,8 @@ export default function StepsScreen() {
   const progress = Math.min(activeDisplaySteps / targetSteps, 1);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#000000" }}>
-      <LinearGradient colors={["#000000", "#111111"]} style={styles.container}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: c.bg }}>
+      <LinearGradient colors={c.gradient} style={styles.container}>
         <View style={styles.pageHeaderBlock}>
           <Text style={styles.pageHeaderTitle}>Fitness Tracker</Text>
           <Text style={styles.pageHeaderSubtitle}>
@@ -497,7 +747,7 @@ export default function StepsScreen() {
               <Ionicons
                 name="battery-charging-outline"
                 size={22}
-                color="#4ecca3"
+                color={c.accentText}
               />
             </TouchableOpacity>
             <Text style={styles.timeText}>
@@ -512,7 +762,11 @@ export default function StepsScreen() {
 
         <View style={styles.centeredContent}>
           <View style={styles.mainProgressArea}>
-            <MaterialCommunityIcons name="walk" size={60} color="#4ecca3" />
+            <MaterialCommunityIcons
+              name="walk"
+              size={60}
+              color={c.accentText}
+            />
             <Text style={styles.stepCount}>
               {activeDisplaySteps.toLocaleString()}
             </Text>
@@ -532,39 +786,21 @@ export default function StepsScreen() {
 
           <View style={styles.statsGrid}>
             <View style={styles.statItem}>
-              <Ionicons name="location" size={24} color="#4ecca3" />
+              <Ionicons name="location" size={24} color={c.accentText} />
               <Text style={styles.statVal}>{distanceKm}</Text>
               <Text style={styles.statLabel}>KM</Text>
             </View>
 
-            <View
-              style={[
-                styles.statItem,
-                {
-                  borderLeftWidth: 1,
-                  borderRightWidth: 1,
-                  borderColor: "#ffffff20",
-                },
-              ]}
-            >
-              <MaterialCommunityIcons name="fire" size={24} color="#ff6b35" />
-              <Text style={[styles.statVal, { color: "#ff6b35" }]}>
+            <View style={[styles.statItem, styles.statItemDivided]}>
+              <MaterialCommunityIcons name="fire" size={24} color={c.orange} />
+              <Text style={[styles.statVal, { color: c.orange }]}>
                 {caloriesBurned}
               </Text>
               <Text style={styles.statLabel}>CALORIES</Text>
             </View>
 
-            <View
-              style={[
-                styles.statItem,
-                {
-                  borderLeftWidth: 1,
-                  borderRightWidth: 1,
-                  borderColor: "#ffffff20",
-                },
-              ]}
-            >
-              <Ionicons name="flag" size={24} color="#4ecca3" />
+            <View style={[styles.statItem, styles.statItemDivided]}>
+              <Ionicons name="flag" size={24} color={c.accentText} />
               <Text style={styles.statVal}>
                 {remainingSteps.toLocaleString()}
               </Text>
@@ -572,7 +808,7 @@ export default function StepsScreen() {
             </View>
 
             <View style={styles.statItem}>
-              <Ionicons name="trending-up" size={24} color="#4ecca3" />
+              <Ionicons name="trending-up" size={24} color={c.accentText} />
               <Text style={styles.statVal}>{targetSteps.toLocaleString()}</Text>
               <Text style={styles.statLabel}>GOAL</Text>
             </View>
@@ -588,7 +824,7 @@ export default function StepsScreen() {
                 setModalVisible(true);
               }}
             >
-              <Ionicons name="create-outline" size={20} color="#4ecca3" />
+              <Ionicons name="create-outline" size={20} color={c.accentText} />
               <Text style={styles.outlineBtnText}>Edit Goal</Text>
             </TouchableOpacity>
 
@@ -596,7 +832,7 @@ export default function StepsScreen() {
               style={styles.outlineBtn}
               onPress={() => router.push("/history")}
             >
-              <Ionicons name="bar-chart" size={20} color="#4ecca3" />
+              <Ionicons name="bar-chart" size={20} color={c.accentText} />
               <Text style={styles.outlineBtnText}>History</Text>
             </TouchableOpacity>
           </View>
@@ -620,15 +856,9 @@ export default function StepsScreen() {
                 onChangeText={setGoalInput}
                 editable={!updatingGoal}
                 maxLength={6}
+                keyboardAppearance={isDark ? "dark" : "light"}
               />
-              <View
-                style={{
-                  width: "100%",
-                  height: 1,
-                  backgroundColor: "#ffffff15",
-                  marginVertical: 15,
-                }}
-              />
+              <View style={styles.popupDivider} />
               <View style={styles.popupActions}>
                 <TouchableOpacity
                   style={[styles.popupBtn, styles.cancelBtn]}
@@ -656,185 +886,3 @@ export default function StepsScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, paddingHorizontal: 15, justifyContent: "center" },
-  centeredContent: { flex: 0, justifyContent: "center", gap: 0 },
-  pageHeaderBlock: { alignItems: "center", marginTop: 0, marginBottom: 10 },
-  pageHeaderTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#ffffff",
-    marginTop: 8,
-    letterSpacing: -0.5,
-  },
-  pageHeaderSubtitle: {
-    fontSize: 13,
-    color: "#a4b0be",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  liveBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ffffff10",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#ffffff20",
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#2ecc71",
-    marginRight: 6,
-  },
-  liveText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-  timeText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
-  mainProgressArea: {
-    marginVertical: 25,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#000000",
-    borderRadius: 20,
-    paddingVertical: 25,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: "#ffffff15",
-  },
-  stepCount: {
-    fontSize: 44,
-    fontWeight: "300",
-    color: "#ffffff",
-    marginVertical: 4,
-    letterSpacing: -1.5,
-    textShadowColor: "rgba(78, 204, 163, 0.4)",
-    textShadowOffset: { width: 0, height: 4 },
-    textShadowRadius: 12,
-  },
-  stepLabel: {
-    color: "#4ecca3",
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 2,
-  },
-  progressBarBg: {
-    height: 16,
-    width: "100%",
-    backgroundColor: "#ffffff15",
-    borderRadius: 8,
-    marginTop: 20,
-    overflow: "hidden",
-    justifyContent: "center",
-    position: "relative",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#4ecca3",
-    borderRadius: 8,
-  },
-  progressBarText: {
-    position: "absolute",
-    alignSelf: "center",
-    color: "#f7f6f6",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-  statsGrid: {
-    flexDirection: "row",
-    backgroundColor: "#ffffff08",
-    borderRadius: 15,
-    paddingVertical: 15,
-    paddingHorizontal: 5,
-    marginBottom: 20,
-    justifyContent: "space-between",
-  },
-  statItem: { flex: 1, alignItems: "center", paddingHorizontal: 2 },
-  statVal: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "bold",
-    marginTop: 4,
-    textAlign: "center",
-  },
-  statLabel: {
-    color: "#95a5a6",
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 2,
-  },
-  buttonContainer: { marginBottom: 20, paddingHorizontal: 5 },
-  outlineBtn: {
-    flex: 1,
-    borderWidth: 1.5,
-    borderColor: "#4ecca360",
-    paddingVertical: 12,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-  outlineBtnText: { color: "#fcfcfc", fontWeight: "600", fontSize: 14 },
-  secondaryRow: {
-    flexDirection: "row",
-    gap: 12,
-    justifyContent: "space-around",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 25,
-  },
-  popupCard: {
-    backgroundColor: "#111111",
-    width: "100%",
-    borderRadius: 20,
-    padding: 22,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#ffffff15",
-    elevation: 10,
-  },
-  popupTitle: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "bold",
-    marginBottom: 18,
-  },
-  popupInput: {
-    backgroundColor: "#ffffff08",
-    width: "60%",
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#4ecca3",
-    color: "#fff",
-    fontSize: 22,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 5,
-  },
-  popupActions: { flexDirection: "row", gap: 12, width: "100%" },
-  popupBtn: {
-    flex: 1,
-    height: 48,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  cancelBtn: { backgroundColor: "#ffffff10" },
-  cancelBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
-  saveBtn: { backgroundColor: "#4ecca3" },
-  saveBtnText: { color: "#000000", fontWeight: "bold", fontSize: 15 },
-});

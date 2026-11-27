@@ -7,6 +7,7 @@ import { Stack, useRouter } from "expo-router";
 import * as ExpoSplashScreen from "expo-splash-screen";
 import * as Updates from "expo-updates";
 import { useEffect, useRef, useState } from "react";
+import { ThemeProvider, useTheme } from "../context/ThemeContext";
 import { getActiveChatTeam } from "../utils/chatPresence";
 
 import {
@@ -22,9 +23,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context"; // ✅ FIX: Added missing import
+import { SafeAreaView } from "react-native-safe-area-context";
 import AuthDialog from "../components/AuthDialog";
-import LoadingOverlay from "../components/LoadingOverlay"; // ← add
+import LoadingOverlay from "../components/LoadingOverlay";
 import CustomSplashScreen from "../components/SplashScreen";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { registerForPushNotifications } from "../utils/pushNotifications";
@@ -76,15 +77,19 @@ function MainLayout() {
   const { user, isLoggedIn, isAdmin, setUser, checkSession, clearSession } =
     useAuth();
 
+  // ✅ Theming
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
+
   const [isAppReady, setIsAppReady] = useState(false);
   const [isHeaderModalVisible, setHeaderModalVisible] = useState(false);
-  const [isGuestDialogVisible, setGuestDialogVisible] = useState(false); // ✅ Add this
+  const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
 
   const [isEditModalVisible, setEditModalVisible] = useState(false);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
   const [updating, setUpdating] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false); // ← add this
+  const [loggingOut, setLoggingOut] = useState(false);
   const [showBudgetPromo, setShowBudgetPromo] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
@@ -119,11 +124,9 @@ function MainLayout() {
     }
   };
 
-  // Inside MainLayout:
   useEffect(() => {
     const handleDeepLink = ({ url }: { url: string }) => {
       const parsed = Linking.parse(url);
-      // If someone clicked an invite link
       if (parsed.path === "teams/join" && parsed.queryParams?.code) {
         router.push({
           pathname: "/teams",
@@ -162,7 +165,7 @@ function MainLayout() {
       try {
         notifSub = Notifications.addNotificationResponseReceivedListener(
           (response: any) => {
-            if (!isReadyRef.current) return; // cold-start effect handles this
+            if (!isReadyRef.current) return;
             openFromNotification(
               response.notification.request.content.data,
               response.notification.request.identifier,
@@ -201,7 +204,6 @@ function MainLayout() {
       console.log("AsyncStorage OTA guard failed:", e);
     }
 
-    // Normal startup (always runs)
     setIsAppReady(true);
 
     setTimeout(async () => {
@@ -224,30 +226,21 @@ function MainLayout() {
     const startTime = Date.now();
 
     try {
-      // 1. Stop the native step tracker
       try {
         await stopStepTracker();
-      } catch (e) {
-        console.log("[logout] stopStepTracker failed:", e);
-      }
+      } catch (e) {}
 
-      // 2. Log out from the server
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 8000);
-
         await fetch(`${API_BASE}/logout`, {
           method: "POST",
           credentials: "include",
           signal: controller.signal,
         });
-
         clearTimeout(timeoutId);
-      } catch (e) {
-        console.log("[logout] server logout failed:", e);
-      }
+      } catch (e) {}
 
-      // 3. Clear local storage
       try {
         await AsyncStorage.multiRemove([
           "@taskcare360_cached_target",
@@ -255,17 +248,11 @@ function MainLayout() {
           "@taskcare360_battery_prompt_shown",
           "@taskcare360_just_reloaded",
         ]);
-      } catch (e) {
-        console.log("[logout] AsyncStorage cleanup failed:", e);
-      }
+      } catch (e) {}
 
-      // 4. Clear authentication
       clearSession();
-
-      // 5. Verify session
       await checkSession();
     } finally {
-      // 6. Maintain minimum loading duration
       const elapsedTime = Date.now() - startTime;
       const remainingTime = Math.max(0, 2000 - elapsedTime);
 
@@ -299,9 +286,8 @@ function MainLayout() {
       }
       const data = await response.json();
       if (data.status === "success") {
-        // in _layout.tsx handleSaveProfile
         setUser({
-          id: data.user.id, // ← add
+          id: data.user.id,
           name: data.user.name,
           email: data.user.email,
           is_admin: !!data.user.is_admin,
@@ -321,7 +307,7 @@ function MainLayout() {
   if (!isAppReady) {
     return (
       <View
-        style={{ flex: 1, backgroundColor: "#ffffff" }}
+        style={{ flex: 1, backgroundColor: isDark ? "#0F172A" : "#ffffff" }}
         onLayout={async () => {
           await ExpoSplashScreen.hideAsync();
         }}
@@ -334,52 +320,75 @@ function MainLayout() {
   const avatarLetter = user ? user.name.trim().charAt(0).toUpperCase() : "A";
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "lavender" }}>
-      <View style={{ flex: 1, backgroundColor: "#fff" }}>
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? "#0F172A" : "lavender" }}
+    >
+      <View style={{ flex: 1, backgroundColor: isDark ? "#1E293B" : "#fff" }}>
         <Stack
           initialRouteName="index"
           screenOptions={{
+// Inside app/_layout.tsx -> <Stack screenOptions={{ header: () => ( ... ) }}>
             header: () => (
-              <View style={styles.headerContainer}>
-                {/* ✅ Clickable Logo */}
+              <View
+                style={[
+                  styles.headerContainer,
+                  isDark && {
+                    backgroundColor: "#1E293B",
+                    borderBottomColor: "#334155",
+                  },
+                ]}
+              >
                 <TouchableOpacity
                   style={styles.headerLeft}
                   onPress={() => router.replace("/")}
                 >
-                  {/* ✅ Use your actual icon image */}
                   <Image
                     source={require("../assets/images/icon.png")}
                     style={{ width: 32, height: 32, borderRadius: 8 }}
                     resizeMode="contain"
                   />
-                  {/* ✅ Crisp, bold, two-tone text */}
-                  <Text style={styles.headerLogo}>
+                  <Text
+                    style={[styles.headerLogo, isDark && { color: "#fff" }]}
+                  >
                     Fit<Text style={{ color: "#4ecca3" }}>Wisely</Text>
                   </Text>
                 </TouchableOpacity>
 
-                {/* ✅ Circular profile icon with border and distinct color */}
-                <TouchableOpacity
-                  style={styles.headerRight}
-                  onPress={() => {
-                    if (isLoggedIn) setHeaderModalVisible(true);
-                    else setGuestDialogVisible(true);
-                  }}
-                >
-                  {isLoggedIn ? (
-                    <View style={styles.headerAvatar}>
-                      <Text style={styles.headerAvatarText}>
-                        {avatarLetter}
-                      </Text>
-                    </View>
-                  ) : (
-                    <Ionicons
-                      name="person-circle-outline"
-                      size={32}
-                      color="#2c3e50"
+                {/* ✅ RIGHT SIDE: Theme Toggle + Profile */}
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  
+                  {/* ✅ Theme Toggle Button */}
+                  <TouchableOpacity onPress={toggleTheme} style={{ padding: 4 }}>
+                    <MaterialCommunityIcons
+                      name={isDark ? "weather-night" : "white-balance-sunny"}
+                      size={24}
+                      color={isDark ? "#F59E0B" : "#D97706"}
                     />
-                  )}
-                </TouchableOpacity>
+                  </TouchableOpacity>
+
+                  {/* Profile Avatar */}
+                  <TouchableOpacity
+                    style={styles.headerRight}
+                    onPress={() => {
+                      if (isLoggedIn) setHeaderModalVisible(true);
+                      else setGuestDialogVisible(true);
+                    }}
+                  >
+                    {isLoggedIn ? (
+                      <View style={styles.headerAvatar}>
+                        <Text style={styles.headerAvatarText}>
+                          {avatarLetter}
+                        </Text>
+                      </View>
+                    ) : (
+                      <Ionicons
+                        name="person-circle-outline"
+                        size={32}
+                        color={isDark ? "#E2E8F0" : "#2c3e50"}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             ),
           }}
@@ -406,12 +415,27 @@ function MainLayout() {
           />
         </Stack>
 
-        <View style={styles.footer}>
-          <NavItem icon="home" label="Home" path="/" />
-          <NavItem icon="people" label="Teams" path="/teams" />
-          <NavItem icon="walk" label="Steps" path="/steps" />
-          <NavItem icon="bar-chart" label="History" path="/history" />
-          <NavItem icon="list" label="Tasks" path="/dashboard" />
+        <View
+          style={[
+            styles.footer,
+            isDark && { backgroundColor: "#1E293B", borderTopColor: "#334155" },
+          ]}
+        >
+          <NavItem icon="home" label="Home" path="/" isDark={isDark} />
+          <NavItem icon="people" label="Teams" path="/teams" isDark={isDark} />
+          <NavItem icon="walk" label="Steps" path="/steps" isDark={isDark} />
+          <NavItem
+            icon="bar-chart"
+            label="History"
+            path="/history"
+            isDark={isDark}
+          />
+          <NavItem
+            icon="list"
+            label="Tasks"
+            path="/dashboard"
+            isDark={isDark}
+          />
         </View>
       </View>
 
@@ -422,17 +446,60 @@ function MainLayout() {
           activeOpacity={1}
           onPress={() => setHeaderModalVisible(false)}
         >
-          <View style={styles.dialogBox}>
+          <View
+            style={[styles.dialogBox, isDark && { backgroundColor: "#1E293B" }]}
+          >
             {isLoggedIn ? (
               <>
                 <View style={styles.profileHeader}>
                   <View style={styles.profileAvatarLarge}>
                     <Text style={styles.avatarTextLarge}>{avatarLetter}</Text>
                   </View>
-                  <Text style={styles.profileName}>{user?.name}</Text>
-                  <Text style={styles.profileSubtitle}>{user?.email}</Text>
+                  <Text
+                    style={[styles.profileName, isDark && { color: "#fff" }]}
+                  >
+                    {user?.name}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.profileSubtitle,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
+                    {user?.email}
+                  </Text>
                 </View>
-                <View style={styles.menuContainer}>
+                <View
+                  style={[
+                    styles.menuContainer,
+                    isDark && { backgroundColor: "#0F172A" },
+                  ]}
+                >
+                  {/* ✅ DARK MODE TOGGLE */}
+                  <TouchableOpacity
+                    style={styles.menuItem}
+                    onPress={toggleTheme}
+                  >
+                    <MaterialCommunityIcons
+                      name={isDark ? "weather-night" : "white-balance-sunny"}
+                      size={22}
+                      color="#F59E0B"
+                      style={{ marginRight: 14 }}
+                    />
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      {isDark ? "Dark Mode" : "Light Mode"}
+                    </Text>
+                    <MaterialCommunityIcons
+                      name={
+                        isDark ? "toggle-switch" : "toggle-switch-off-outline"
+                      }
+                      size={32}
+                      color={isDark ? "#4ecca3" : "#94A3B8"}
+                    />
+                  </TouchableOpacity>
+
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={() => {
@@ -447,13 +514,17 @@ function MainLayout() {
                       color="#4F46E5"
                       style={{ marginRight: 14 }}
                     />
-                    <Text style={styles.menuText}>Edit Profile</Text>
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      Edit Profile
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={() => {
                       setHeaderModalVisible(false);
-                      router.push("/teams"); // Takes them to the My Team screen
+                      router.push("/teams");
                     }}
                   >
                     <MaterialCommunityIcons
@@ -462,7 +533,11 @@ function MainLayout() {
                       color="#0284C7"
                       style={{ marginRight: 14 }}
                     />
-                    <Text style={styles.menuText}>My Team</Text>
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      My Team
+                    </Text>
                   </TouchableOpacity>
 
                   {isAdmin && (
@@ -479,7 +554,14 @@ function MainLayout() {
                         color="#7C3AED"
                         style={{ marginRight: 14 }}
                       />
-                      <Text style={styles.menuText}>Admin Panel</Text>
+                      <Text
+                        style={[
+                          styles.menuText,
+                          isDark && { color: "#E2E8F0" },
+                        ]}
+                      >
+                        Admin Panel
+                      </Text>
                     </TouchableOpacity>
                   )}
 
@@ -496,9 +578,12 @@ function MainLayout() {
                       color="#D97706"
                       style={{ marginRight: 14 }}
                     />
-                    <Text style={styles.menuText}>Reset Password</Text>
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      Reset Password
+                    </Text>
                   </TouchableOpacity>
-                  {/* ✅ ADD THIS CONTACT SUPPORT BUTTON */}
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={() => {
@@ -514,10 +599,13 @@ function MainLayout() {
                       color="#0284C7"
                       style={{ marginRight: 14 }}
                     />
-                    <Text style={styles.menuText}>Contact Support</Text>
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      Contact Support
+                    </Text>
                   </TouchableOpacity>
 
-                  {/* ✅ BUDGET WISELY EXTERNAL SERVICE PROMO */}
                   <TouchableOpacity
                     style={styles.menuItem}
                     onPress={() => {
@@ -531,11 +619,14 @@ function MainLayout() {
                       color="#16A34A"
                       style={{ marginRight: 14 }}
                     />
-                    <Text style={styles.menuText}>Budget Wisely</Text>
+                    <Text
+                      style={[styles.menuText, isDark && { color: "#E2E8F0" }]}
+                    >
+                      Budget Wisely
+                    </Text>
                     <Ionicons name="open-outline" size={16} color="#94A3B8" />
                   </TouchableOpacity>
 
-                  {/* ✅ SIGN OUT BUTTON */}
                   <TouchableOpacity
                     style={styles.menuItemLogout}
                     onPress={handleLogout}
@@ -552,8 +643,12 @@ function MainLayout() {
               </>
             ) : (
               <>
-                <Text style={styles.dialogTitle}>Welcome to FitWisely</Text>
-                <Text style={styles.dialogSub}>
+                <Text style={[styles.dialogTitle, isDark && { color: "#fff" }]}>
+                  Welcome to FitWisely
+                </Text>
+                <Text
+                  style={[styles.dialogSub, isDark && { color: "#94A3B8" }]}
+                >
                   Sign in to sync your steps and tasks.
                 </Text>
                 <TouchableOpacity
@@ -597,27 +692,74 @@ function MainLayout() {
         onRequestClose={() => setShowLogoutConfirm(false)}
       >
         <View style={styles.logoutModalOverlay}>
-          <View style={styles.logoutDialog}>
-            <View style={styles.logoutIconCircle}>
-              <MaterialCommunityIcons name="walk" size={30} color="#D97706" />
+          <View
+            style={[
+              styles.logoutDialog,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
+            <View
+              style={[
+                styles.logoutIconCircle,
+                isDark && { backgroundColor: "#422006" },
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="walk"
+                size={30}
+                color={isDark ? "#FCD34D" : "#D97706"}
+              />
             </View>
 
-            <Text style={styles.logoutTitle}>Before You Sign Out</Text>
+            <Text style={[styles.logoutTitle, isDark && { color: "#fff" }]}>
+              Before You Sign Out
+            </Text>
 
-            <Text style={styles.logoutSubtitle}>
+            <Text
+              style={[styles.logoutSubtitle, isDark && { color: "#94A3B8" }]}
+            >
               Please review these important steps to protect your fitness
               progress.
             </Text>
 
             {/* Step 1 */}
-            <View style={styles.logoutStepRow}>
-              <View style={styles.logoutStepNumber}>
-                <Text style={styles.logoutStepNumberText}>1</Text>
+            <View
+              style={[
+                styles.logoutStepRow,
+                isDark && { borderBottomColor: "#334155" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.logoutStepNumber,
+                  isDark && { backgroundColor: "#0C4A6E" },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.logoutStepNumberText,
+                    isDark && { color: "#38BDF8" },
+                  ]}
+                >
+                  1
+                </Text>
               </View>
 
               <View style={styles.logoutStepContent}>
-                <Text style={styles.logoutStepTitle}>Sync your steps</Text>
-                <Text style={styles.logoutStepDescription}>
+                <Text
+                  style={[
+                    styles.logoutStepTitle,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Sync your steps
+                </Text>
+                <Text
+                  style={[
+                    styles.logoutStepDescription,
+                    isDark && { color: "#94A3B8" },
+                  ]}
+                >
                   Open the Fitness Tracker screen and wait at least 10 seconds
                   to allow your latest steps to sync to the cloud before signing
                   out.
@@ -626,30 +768,87 @@ function MainLayout() {
             </View>
 
             {/* Step 2 */}
-            <View style={styles.logoutStepRow}>
-              <View style={styles.logoutStepNumber}>
-                <Text style={styles.logoutStepNumberText}>2</Text>
+            <View
+              style={[
+                styles.logoutStepRow,
+                isDark && { borderBottomColor: "#334155" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.logoutStepNumber,
+                  isDark && { backgroundColor: "#0C4A6E" },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.logoutStepNumberText,
+                    isDark && { color: "#38BDF8" },
+                  ]}
+                >
+                  2
+                </Text>
               </View>
 
               <View style={styles.logoutStepContent}>
-                <Text style={styles.logoutStepTitle}>Tracking will stop</Text>
-                <Text style={styles.logoutStepDescription}>
+                <Text
+                  style={[
+                    styles.logoutStepTitle,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Tracking will stop
+                </Text>
+                <Text
+                  style={[
+                    styles.logoutStepDescription,
+                    isDark && { color: "#94A3B8" },
+                  ]}
+                >
                   FitWisely will stop tracking steps when you sign out.
                 </Text>
               </View>
             </View>
 
             {/* Step 3 */}
-            <View style={[styles.logoutStepRow, styles.logoutLastStep]}>
-              <View style={styles.logoutStepNumber}>
-                <Text style={styles.logoutStepNumberText}>3</Text>
+            <View
+              style={[
+                styles.logoutStepRow,
+                styles.logoutLastStep,
+                isDark && { borderBottomColor: "transparent" },
+              ]}
+            >
+              <View
+                style={[
+                  styles.logoutStepNumber,
+                  isDark && { backgroundColor: "#0C4A6E" },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.logoutStepNumberText,
+                    isDark && { color: "#38BDF8" },
+                  ]}
+                >
+                  3
+                </Text>
               </View>
 
               <View style={styles.logoutStepContent}>
-                <Text style={styles.logoutStepTitle}>
+                <Text
+                  style={[
+                    styles.logoutStepTitle,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
                   Steps won't sync while signed out
                 </Text>
-                <Text style={styles.logoutStepDescription}>
+                <Text
+                  style={[
+                    styles.logoutStepDescription,
+                    isDark && { color: "#94A3B8" },
+                  ]}
+                >
                   Steps taken while you are logged out will not be saved to your
                   account automatically.
                 </Text>
@@ -657,14 +856,27 @@ function MainLayout() {
             </View>
 
             {/* Warning */}
-            <View style={styles.logoutWarning}>
+            <View
+              style={[
+                styles.logoutWarning,
+                isDark && {
+                  backgroundColor: "#422006",
+                  borderColor: "#78350F",
+                },
+              ]}
+            >
               <MaterialCommunityIcons
                 name="alert-circle-outline"
                 size={19}
-                color="#B45309"
+                color={isDark ? "#FCD34D" : "#B45309"}
               />
 
-              <Text style={styles.logoutWarningText}>
+              <Text
+                style={[
+                  styles.logoutWarningText,
+                  isDark && { color: "#FCD34D" },
+                ]}
+              >
                 Make sure your steps are synced before continuing.
               </Text>
             </View>
@@ -672,10 +884,20 @@ function MainLayout() {
             {/* Buttons */}
             <View style={styles.logoutActions}>
               <TouchableOpacity
-                style={styles.logoutCancelButton}
+                style={[
+                  styles.logoutCancelButton,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setShowLogoutConfirm(false)}
               >
-                <Text style={styles.logoutCancelText}>Stay Logged In</Text>
+                <Text
+                  style={[
+                    styles.logoutCancelText,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Stay Logged In
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -699,31 +921,65 @@ function MainLayout() {
       {/* ✅ EDIT PROFILE MODAL */}
       <Modal visible={isEditModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.editDialogBox}>
-            <Text style={styles.dialogTitle}>Edit Profile</Text>
-            <Text style={styles.inputLabel}>Full Name</Text>
+          <View
+            style={[
+              styles.editDialogBox,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
+            <Text style={[styles.dialogTitle, isDark && { color: "#fff" }]}>
+              Edit Profile
+            </Text>
+            <Text style={[styles.inputLabel, isDark && { color: "#94A3B8" }]}>
+              Full Name
+            </Text>
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                isDark && {
+                  backgroundColor: "#0F172A",
+                  borderColor: "#334155",
+                  color: "#fff",
+                },
+              ]}
               value={editName}
               onChangeText={setEditName}
               placeholder="Enter your name"
+              placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
             />
-            <Text style={styles.inputLabel}>Email Address</Text>
+            <Text style={[styles.inputLabel, isDark && { color: "#94A3B8" }]}>
+              Email Address
+            </Text>
             <TextInput
-              style={styles.modalInput}
+              style={[
+                styles.modalInput,
+                isDark && {
+                  backgroundColor: "#0F172A",
+                  borderColor: "#334155",
+                  color: "#fff",
+                },
+              ]}
               value={editEmail}
               onChangeText={setEditEmail}
               placeholder="Enter your email"
+              placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
               keyboardType="email-address"
               autoCapitalize="none"
             />
             <View style={styles.editActions}>
               <TouchableOpacity
-                style={styles.cancelBtn}
+                style={[
+                  styles.cancelBtn,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setEditModalVisible(false)}
                 disabled={updating}
               >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
+                <Text
+                  style={[styles.cancelBtnText, isDark && { color: "#E2E8F0" }]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.saveBtn}
@@ -749,24 +1005,43 @@ function MainLayout() {
         onRequestClose={() => setShowBudgetPromo(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.promoDialogBox}>
+          <View
+            style={[
+              styles.promoDialogBox,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
             {/* Header */}
             <View style={styles.promoHeader}>
-              <View style={styles.promoIconCircle}>
+              <View
+                style={[
+                  styles.promoIconCircle,
+                  isDark && { backgroundColor: "#064E3B" },
+                ]}
+              >
                 <MaterialCommunityIcons
                   name="wallet"
                   size={32}
                   color="#16A34A"
                 />
               </View>
-              <Text style={styles.promoTitle}>Budget Wisely</Text>
-              <Text style={styles.promoSubtitle}>
+              <Text style={[styles.promoTitle, isDark && { color: "#fff" }]}>
+                Budget Wisely
+              </Text>
+              <Text
+                style={[styles.promoSubtitle, isDark && { color: "#94A3B8" }]}
+              >
                 Master your money with effortless precision
               </Text>
             </View>
 
             {/* Feature list */}
-            <View style={styles.promoFeatures}>
+            <View
+              style={[
+                styles.promoFeatures,
+                isDark && { backgroundColor: "#0F172A" },
+              ]}
+            >
               <View style={styles.promoFeatureRow}>
                 <MaterialCommunityIcons
                   name="chart-line"
@@ -774,10 +1049,20 @@ function MainLayout() {
                   color="#16A34A"
                 />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>
+                  <Text
+                    style={[
+                      styles.promoFeatureTitle,
+                      isDark && { color: "#E2E8F0" },
+                    ]}
+                  >
                     Real-Time Insights
                   </Text>
-                  <Text style={styles.promoFeatureDesc}>
+                  <Text
+                    style={[
+                      styles.promoFeatureDesc,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
                     Live charts for monthly & yearly spending trends
                   </Text>
                 </View>
@@ -790,10 +1075,20 @@ function MainLayout() {
                   color="#16A34A"
                 />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>
+                  <Text
+                    style={[
+                      styles.promoFeatureTitle,
+                      isDark && { color: "#E2E8F0" },
+                    ]}
+                  >
                     Effortless Budgeting
                   </Text>
-                  <Text style={styles.promoFeatureDesc}>
+                  <Text
+                    style={[
+                      styles.promoFeatureDesc,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
                     Monthly limits per category with visual progress
                   </Text>
                 </View>
@@ -806,8 +1101,20 @@ function MainLayout() {
                   color="#16A34A"
                 />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>Smart Tracking</Text>
-                  <Text style={styles.promoFeatureDesc}>
+                  <Text
+                    style={[
+                      styles.promoFeatureTitle,
+                      isDark && { color: "#E2E8F0" },
+                    ]}
+                  >
+                    Smart Tracking
+                  </Text>
+                  <Text
+                    style={[
+                      styles.promoFeatureDesc,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
                     Log cash, card & digital spends in seconds
                   </Text>
                 </View>
@@ -820,8 +1127,20 @@ function MainLayout() {
                   color="#16A34A"
                 />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>Reports</Text>
-                  <Text style={styles.promoFeatureDesc}>
+                  <Text
+                    style={[
+                      styles.promoFeatureTitle,
+                      isDark && { color: "#E2E8F0" },
+                    ]}
+                  >
+                    Reports
+                  </Text>
+                  <Text
+                    style={[
+                      styles.promoFeatureDesc,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
                     Net savings, monthly comparisons & exportable summaries
                   </Text>
                 </View>
@@ -834,8 +1153,20 @@ function MainLayout() {
                   color="#16A34A"
                 />
                 <View style={styles.promoFeatureText}>
-                  <Text style={styles.promoFeatureTitle}>Secure Vault</Text>
-                  <Text style={styles.promoFeatureDesc}>
+                  <Text
+                    style={[
+                      styles.promoFeatureTitle,
+                      isDark && { color: "#E2E8F0" },
+                    ]}
+                  >
+                    Secure Vault
+                  </Text>
+                  <Text
+                    style={[
+                      styles.promoFeatureDesc,
+                      isDark && { color: "#94A3B8" },
+                    ]}
+                  >
                     PIN-protected storage for sensitive financial notes
                   </Text>
                 </View>
@@ -847,9 +1178,11 @@ function MainLayout() {
               <MaterialCommunityIcons
                 name="information-outline"
                 size={16}
-                color="#64748B"
+                color={isDark ? "#64748B" : "#64748B"}
               />
-              <Text style={styles.promoNoticeText}>
+              <Text
+                style={[styles.promoNoticeText, isDark && { color: "#64748B" }]}
+              >
                 Opens Budget Wisely in your browser
               </Text>
             </View>
@@ -857,10 +1190,20 @@ function MainLayout() {
             {/* Actions */}
             <View style={styles.promoActions}>
               <TouchableOpacity
-                style={styles.promoCancelBtn}
+                style={[
+                  styles.promoCancelBtn,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setShowBudgetPromo(false)}
               >
-                <Text style={styles.promoCancelText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.promoCancelText,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.promoOpenBtn}
@@ -887,31 +1230,34 @@ function MainLayout() {
         visible={isGuestDialogVisible}
         onClose={() => setGuestDialogVisible(false)}
       />
-      {/* ✅ Global logout overlay — shows while server + local cleanup runs */}
       <LoadingOverlay visible={loggingOut} />
     </SafeAreaView>
   );
 }
 
-// ✅ Moved NavItem ABOVE the default export to fix hoisting crash
-const NavItem = ({ icon, label, path, onPress }: any) => {
+// ✅ Added isDark to NavItem
+const NavItem = ({ icon, label, path, onPress, isDark }: any) => {
   const router = useRouter();
   return (
     <TouchableOpacity
       style={styles.navItem}
       onPress={onPress || (() => path && router.push(path as any))}
     >
-      <Ionicons name={icon} size={22} color="#555" />
-      <Text style={styles.navLabel}>{label}</Text>
+      <Ionicons name={icon} size={22} color={isDark ? "#94A3B8" : "#555"} />
+      <Text style={[styles.navLabel, isDark && { color: "#94A3B8" }]}>
+        {label}
+      </Text>
     </TouchableOpacity>
   );
 };
 
 export default function Layout() {
   return (
-    <AuthProvider>
-      <MainLayout />
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <MainLayout />
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
@@ -923,7 +1269,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 20,
   },
-
   logoutDialog: {
     width: "100%",
     maxWidth: 430,
@@ -936,7 +1281,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.18,
     shadowRadius: 18,
   },
-
   logoutIconCircle: {
     width: 58,
     height: 58,
@@ -947,7 +1291,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     marginBottom: 14,
   },
-
   logoutTitle: {
     fontSize: 21,
     fontWeight: "800",
@@ -955,7 +1298,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 7,
   },
-
   logoutSubtitle: {
     fontSize: 13,
     lineHeight: 19,
@@ -963,7 +1305,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
   },
-
   logoutStepRow: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -971,12 +1312,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F1F5F9",
   },
-
   logoutLastStep: {
     borderBottomWidth: 0,
     paddingBottom: 8,
   },
-
   logoutStepNumber: {
     width: 28,
     height: 28,
@@ -986,31 +1325,26 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: 12,
   },
-
   logoutStepNumberText: {
     color: "#0369A1",
     fontSize: 13,
     fontWeight: "800",
   },
-
   logoutStepContent: {
     flex: 1,
     paddingTop: 1,
   },
-
   logoutStepTitle: {
     color: "#1E293B",
     fontSize: 14,
     fontWeight: "700",
     marginBottom: 3,
   },
-
   logoutStepDescription: {
     color: "#64748B",
     fontSize: 12,
     lineHeight: 18,
   },
-
   logoutWarning: {
     flexDirection: "row",
     alignItems: "center",
@@ -1022,7 +1356,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 18,
   },
-
   logoutWarningText: {
     flex: 1,
     color: "#92400E",
@@ -1031,12 +1364,10 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     marginLeft: 8,
   },
-
   logoutActions: {
     flexDirection: "row",
     gap: 10,
   },
-
   logoutCancelButton: {
     flex: 1,
     paddingVertical: 13,
@@ -1045,13 +1376,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   logoutCancelText: {
     color: "#334155",
     fontSize: 13,
     fontWeight: "700",
   },
-
   logoutConfirmButton: {
     flex: 1,
     flexDirection: "row",
@@ -1061,7 +1390,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
   logoutConfirmText: {
     color: "#FFFFFF",
     fontSize: 13,
@@ -1080,9 +1408,9 @@ const styles = StyleSheet.create({
   headerLeft: { flexDirection: "row", alignItems: "center" },
   headerLogo: {
     fontSize: 22,
-    fontWeight: "900", // 👈 Makes it extra thick and bold
-    color: "#1a1a2e", // 👈 Dark Navy (matches "Fit" in your logo)
-    letterSpacing: -0.5, // 👈 Tightens the letters for a modern tech look
+    fontWeight: "900",
+    color: "#1a1a2e",
+    letterSpacing: -0.5,
     marginLeft: 8,
   },
   HeaderRight: { padding: 4 },
@@ -1090,14 +1418,13 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: "#4F46E5", // 👈 Changed to a vibrant logo blue
+    backgroundColor: "#4F46E5",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 2,
     borderColor: "#E2E8F0",
   },
   headerAvatarText: { color: "#fff", fontSize: 15, fontWeight: "bold" },
-
   footer: {
     flexDirection: "row",
     height: 70,
@@ -1110,7 +1437,6 @@ const styles = StyleSheet.create({
   },
   navItem: { alignItems: "center", justifyContent: "center", flex: 1 },
   navLabel: { fontSize: 11, color: "#555", marginTop: 0 },
-
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",
@@ -1157,7 +1483,6 @@ const styles = StyleSheet.create({
   dialogLinkBtn: { marginTop: 12 },
   dialogLinkText: { fontSize: 14, fontWeight: "600", color: "#e74c3c" },
   btnText: { color: "#fff", fontWeight: "bold", fontSize: 15 },
-
   profileHeader: { alignItems: "center", marginBottom: 20 },
   profileAvatarLarge: {
     width: 64,
@@ -1197,7 +1522,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#DC2626",
   },
-
   editDialogBox: {
     width: "100%",
     backgroundColor: "#FFFFFF",
@@ -1241,7 +1565,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#6200EE",
   },
   saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
-  // Budget Wisely promo modal
   promoDialogBox: {
     width: "100%",
     maxWidth: 400,

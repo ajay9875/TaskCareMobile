@@ -1,3 +1,4 @@
+// app/admin/team/[id].tsx
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -14,6 +15,13 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../../context/AuthContext";
+import { useTheme } from "../../../context/ThemeContext";
+import {
+  getAdminColors,
+  getAdminStyles,
+  statusColorFor,
+  type AdminColors,
+} from "../../../utils/adminTheme";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
@@ -36,19 +44,6 @@ function getAvatarColor(index: number): string {
   return AVATAR_COLORS[index % AVATAR_COLORS.length];
 }
 
-function statusColorFor(state?: string): string {
-  switch (state) {
-    case "online":
-      return "#16A34A";
-    case "signed_out":
-      return "#DC2626";
-    case "offline":
-      return "#94A3B8";
-    default:
-      return "#94A3B8";
-  }
-}
-
 function isTeamAdmin(member: any): boolean {
   const role = (member?.role ?? "").toLowerCase();
 
@@ -61,6 +56,70 @@ function isTeamAdmin(member: any): boolean {
   );
 }
 
+// Screen-specific styles (shared ones live in utils/adminTheme.ts)
+function createStyles(c: AdminColors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: c.bg },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.bg,
+    },
+    notFoundText: { color: c.muted, fontSize: 15 },
+    header: { padding: 20, backgroundColor: c.headerBar },
+    headerTitle: { fontSize: 24, fontWeight: "800", color: "#FFFFFF" },
+    headerSubtitle: { color: "#94A3B8", marginTop: 4 },
+    listContent: { padding: 16, paddingBottom: 40 },
+    memberRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: c.surface,
+      padding: 15,
+      borderRadius: 12,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: c.border,
+    },
+    actionsWrap: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingLeft: 6,
+    },
+    avatar: {
+      width: 46,
+      height: 46,
+      borderRadius: 100,
+      overflow: "hidden",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 12,
+    },
+    avatarText: { color: "#FFFFFF", fontWeight: "bold", fontSize: 18 },
+    memberInfo: { flex: 1, minWidth: 0 },
+    nameRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 6,
+    },
+    memberName: { fontSize: 16, fontWeight: "700", color: c.text },
+    emailText: { fontSize: 12, color: c.muted, marginTop: 2 },
+    stepsText: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: c.muted,
+      marginTop: 6,
+    },
+    emptyContainer: { alignItems: "center", marginTop: 40 },
+    emptyText: { color: c.muted, marginTop: 10 },
+  });
+}
+
+const lightScreenStyles = createStyles(getAdminColors(false));
+const darkScreenStyles = createStyles(getAdminColors(true));
+
 function StatusPill({
   state,
   label,
@@ -70,22 +129,27 @@ function StatusPill({
   label?: string;
   isSignedIn?: boolean;
 }) {
-  const color = statusColorFor(state);
-  const signedInColor = isSignedIn ? "#16A34A" : "#DC2626";
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = getAdminColors(isDark);
+  const shared = getAdminStyles(isDark);
+
+  const color = statusColorFor(c, state);
+  const signedInColor = isSignedIn ? c.success : c.danger;
 
   return (
-    <View style={styles.pillRow}>
-      <View style={styles.statusPill}>
-        <View style={[styles.statusDot, { backgroundColor: color }]} />
-        <Text style={[styles.statusPillText, { color }]} numberOfLines={1}>
+    <View style={shared.pillRow}>
+      <View style={shared.statusPill}>
+        <View style={[shared.statusDot, { backgroundColor: color }]} />
+        <Text style={[shared.statusPillText, { color }]} numberOfLines={1}>
           {label ?? "Not active yet"}
         </Text>
       </View>
 
-      <View style={styles.statusPill}>
-        <View style={[styles.statusDot, { backgroundColor: signedInColor }]} />
+      <View style={shared.statusPill}>
+        <View style={[shared.statusDot, { backgroundColor: signedInColor }]} />
         <Text
-          style={[styles.statusPillText, { color: signedInColor }]}
+          style={[shared.statusPillText, { color: signedInColor }]}
           numberOfLines={1}
         >
           {isSignedIn ? "Signed In" : "Signed Out"}
@@ -99,6 +163,13 @@ export default function AdminTeamDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
+
+  // Theme
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = getAdminColors(isDark);
+  const shared = getAdminStyles(isDark);
+  const styles = isDark ? darkScreenStyles : lightScreenStyles;
 
   const [team, setTeam] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -154,7 +225,6 @@ export default function AdminTeamDetails() {
   }, [fetchTeam]);
 
   // Team admin first, all other members alphabetically.
-  // Steps and user IDs are deliberately NOT used for sorting.
   const sortedMembers = useMemo(() => {
     return [...(team?.members ?? [])].sort((a: any, b: any) => {
       const aIsAdmin = isTeamAdmin(a);
@@ -169,7 +239,6 @@ export default function AdminTeamDetails() {
     });
   }, [team?.members]);
 
-  // ─── DELETE MEMBER LOGIC ───
   const openDeleteModal = (memberId: number, memberName: string) => {
     setMemberToDelete({ id: memberId, name: memberName });
     setDeleteConfirmText("");
@@ -264,7 +333,7 @@ export default function AdminTeamDetails() {
   if (loading && !team) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
+        <ActivityIndicator size="large" color={c.primaryIcon} />
       </View>
     );
   }
@@ -293,8 +362,9 @@ export default function AdminTeamDetails() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() => fetchTeam(true)}
-            tintColor="#4F46E5"
-            colors={["#4F46E5"]}
+            tintColor={c.primaryIcon}
+            colors={[c.primary]}
+            progressBackgroundColor={c.surface}
           />
         }
       >
@@ -303,7 +373,7 @@ export default function AdminTeamDetails() {
             <MaterialCommunityIcons
               name="account-group-outline"
               size={48}
-              color="#CBD5E1"
+              color={c.emptyIcon}
             />
             <Text style={styles.emptyText}>No members in this team yet.</Text>
           </View>
@@ -315,7 +385,7 @@ export default function AdminTeamDetails() {
             return (
               <View key={String(item.user_id)} style={styles.memberRow}>
                 <TouchableOpacity
-                  style={styles.rowBody}
+                  style={shared.rowBody}
                   activeOpacity={0.7}
                   onPress={() =>
                     router.push({
@@ -342,19 +412,19 @@ export default function AdminTeamDetails() {
                       </Text>
 
                       {isAdmin && (
-                        <View style={styles.adminLabel}>
+                        <View style={shared.adminLabel}>
                           <MaterialCommunityIcons
                             name="crown"
                             size={13}
-                            color="#D97706"
+                            color={c.adminIcon}
                           />
-                          <Text style={styles.adminLabelText}>Admin</Text>
+                          <Text style={shared.adminLabelText}>Admin</Text>
                         </View>
                       )}
 
                       {isYou && (
-                        <View style={styles.youLabel}>
-                          <Text style={styles.youLabelText}>You</Text>
+                        <View style={shared.youLabel}>
+                          <Text style={shared.youLabelText}>You</Text>
                         </View>
                       )}
                     </View>
@@ -376,40 +446,40 @@ export default function AdminTeamDetails() {
                 </TouchableOpacity>
 
                 <View style={styles.actionsWrap}>
-                  {/* 👑 Make Admin — superadmin can transfer to ANY non-admin member (including self) */}
+                  {/* Make Admin: super admin can transfer to ANY non-admin member (including self) */}
                   {!isAdmin && (
                     <TouchableOpacity
-                      style={styles.makeAdminBtn}
+                      style={shared.infoBtn}
                       disabled={isTransferring}
                       onPress={() =>
                         handleTransferAdmin(item.user_id, item.name)
                       }
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
-                    <MaterialCommunityIcons
-                      name="crown-outline"
-                      size={18}
-                      color="#0284C7"
-                    />
+                      <MaterialCommunityIcons
+                        name="crown-outline"
+                        size={18}
+                        color={c.info}
+                      />
                     </TouchableOpacity>
                   )}
 
-                  {/* 🗑️ Trash — hide for admins and yourself */}
+                  {/* Trash: hide for admins and yourself */}
                   {!isAdmin && !isYou && (
                     <TouchableOpacity
-                      style={styles.trashBtn}
+                      style={shared.trashBtn}
                       onPress={() => openDeleteModal(item.user_id, item.name)}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Ionicons
                         name="trash-outline"
                         size={20}
-                        color="#DC2626"
+                        color={c.danger}
                       />
                     </TouchableOpacity>
                   )}
 
-                  <Ionicons name="chevron-forward" size={20} color="#94A3B8" />
+                  <Ionicons name="chevron-forward" size={20} color={c.faint} />
                 </View>
               </View>
             );
@@ -424,54 +494,53 @@ export default function AdminTeamDetails() {
         transparent={true}
         onRequestClose={() => setDeleteModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
+        <View style={shared.modalOverlay}>
+          <View style={shared.modalContent}>
+            <View style={shared.modalHeader}>
               <MaterialCommunityIcons
                 name="alert-circle"
                 size={36}
-                color="#DC2626"
+                color={c.dangerSolid}
               />
-              <Text style={styles.modalTitle}>Remove Member?</Text>
+              <Text style={shared.modalTitle}>Remove Member?</Text>
             </View>
-            <Text style={styles.modalBody}>
+            <Text style={shared.modalBody}>
               Remove{" "}
-              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
-                {memberToDelete?.name}
-              </Text>
+              <Text style={shared.modalBodyStrong}>{memberToDelete?.name}</Text>
               ?
             </Text>
-            <Text style={styles.modalSubBody}>
+            <Text style={shared.modalSubBody}>
               Their fitness history will not be deleted.
             </Text>
-            <Text style={styles.modalInstruction}>
+            <Text style={shared.modalInstruction}>
               Type{" "}
-              <Text style={{ fontWeight: "bold", color: "#DC2626" }}>
+              <Text style={{ fontWeight: "bold", color: c.dangerSolid }}>
                 DELETE
               </Text>{" "}
               to confirm.
             </Text>
             <TextInput
-              style={styles.deleteInput}
+              style={shared.deleteInput}
               placeholder="DELETE"
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
               autoCapitalize="characters"
               autoCorrect={false}
-              placeholderTextColor="#94A3B8"
+              placeholderTextColor={c.faint}
+              keyboardAppearance={isDark ? "dark" : "light"}
             />
-            <View style={styles.modalActions}>
+            <View style={shared.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={shared.modalBtnCancel}
                 onPress={() => setDeleteModalVisible(false)}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text style={shared.modalBtnCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.modalBtnDelete,
+                  shared.modalBtnDelete,
                   deleteConfirmText !== "DELETE" && {
-                    backgroundColor: "#FCA5A5",
+                    backgroundColor: c.dangerDisabled,
                   },
                 ]}
                 disabled={deleteConfirmText !== "DELETE" || isDeleting}
@@ -480,7 +549,7 @@ export default function AdminTeamDetails() {
                 {isDeleting ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.modalBtnDeleteText}>Remove</Text>
+                  <Text style={shared.modalBtnDeleteText}>Remove</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -490,274 +559,3 @@ export default function AdminTeamDetails() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  makeAdminBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#E0F2FE",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F8FAFC",
-  },
-
-  notFoundText: {
-    color: "#64748B",
-    fontSize: 15,
-  },
-
-  header: {
-    padding: 20,
-    backgroundColor: "#1E293B",
-  },
-
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-
-  headerSubtitle: {
-    color: "#94A3B8",
-    marginTop: 4,
-  },
-
-  listContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-
-  memberRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-  },
-
-  rowBody: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  actionsWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingLeft: 6,
-  },
-
-  trashBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: "#FEE2E2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 100,
-    overflow: "hidden",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 12,
-  },
-
-  avatarText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 18,
-  },
-
-  memberInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  nameRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-
-  memberName: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-
-  adminLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FEF3C7",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
-    gap: 3,
-  },
-
-  adminLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#92400E",
-  },
-
-  youLabel: {
-    backgroundColor: "#DCFCE7",
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 6,
-  },
-
-  youLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-
-  emailText: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 2,
-  },
-
-  stepsText: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: "#64748B",
-    marginTop: 6,
-  },
-
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-  },
-
-  statusPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F1F5F9",
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    gap: 5,
-  },
-
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-
-  statusPillText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-
-  emptyContainer: {
-    alignItems: "center",
-    marginTop: 40,
-  },
-
-  emptyText: {
-    color: "#64748B",
-    marginTop: 10,
-  },
-
-  // ─── MODAL STYLES ───
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContent: {
-    width: "100%",
-    maxWidth: 400,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 24,
-    elevation: 10,
-  },
-  modalHeader: { alignItems: "center", marginBottom: 16 },
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#0F172A",
-    marginTop: 8,
-  },
-  modalBody: {
-    fontSize: 15,
-    color: "#475569",
-    textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 4,
-  },
-  modalSubBody: {
-    fontSize: 13,
-    color: "#64748B",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  modalInstruction: {
-    fontSize: 14,
-    color: "#475569",
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  deleteInput: {
-    backgroundColor: "#F8FAFC",
-    borderWidth: 1,
-    borderColor: "#E2E8F0",
-    borderRadius: 10,
-    padding: 15,
-    fontSize: 18,
-    textAlign: "center",
-    fontWeight: "700",
-    letterSpacing: 2,
-    color: "#0F172A",
-    marginBottom: 24,
-  },
-  modalActions: { flexDirection: "row", gap: 12 },
-  modalBtnCancel: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#F1F5F9",
-    alignItems: "center",
-  },
-  modalBtnCancelText: { color: "#64748B", fontWeight: "700", fontSize: 15 },
-  modalBtnDelete: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: "#DC2626",
-    alignItems: "center",
-  },
-  modalBtnDeleteText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
-});

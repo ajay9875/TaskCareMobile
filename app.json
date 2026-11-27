@@ -11,7 +11,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ajay.taskcare360",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "processing", "fetch", "processing"],
+        "UIBackgroundModes": ["fetch", "processing"],
         "NSMotionUsageDescription": "Allow FitWisely to track your steps even when the app is closed.",
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -95,6 +95,12 @@
           }
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FitWisely to access your photos to share them in team chat."
+        }
+      ],
       "expo-task-manager",
       "expo-background-fetch",
       "expo-font",
@@ -116,7 +122,8 @@
           "color": "#4ecca3",
           "defaultChannel": "default-v2"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "extra": {
       "eas": {

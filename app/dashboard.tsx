@@ -1,3 +1,4 @@
+// app/dashboard.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
@@ -13,19 +14,20 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useTheme } from "../context/ThemeContext";
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const TIMEOUT_MS = 10000;
 
 // Helper: Safe ISO date formatting
-const formatDate = (dateString) => {
+const formatDate = (dateString: any) => {
   if (!dateString) return "";
   const date = new Date(dateString);
   return isNaN(date.getTime()) ? "" : date.toISOString().split("T")[0];
 };
 
 // Custom Fetch Wrapper with Timeout & Handling
-const fetchWithTimeout = async (url, options = {}) => {
+const fetchWithTimeout = async (url: string, options: any = {}) => {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
@@ -42,17 +44,228 @@ const fetchWithTimeout = async (url, options = {}) => {
   }
 };
 
+/* ------------------------------------------------------------------ */
+/* Theme                                                               */
+/* ------------------------------------------------------------------ */
+function getColors(isDark: boolean) {
+  return {
+    bg: isDark ? "#0F172A" : "#F4F7FE",
+    surface: isDark ? "#1E293B" : "#FFFFFF",
+    border: isDark ? "#334155" : "#E2E8F0",
+    divider: isDark ? "#334155" : "#F1F5F9",
+    text: isDark ? "#F8FAFC" : "#0F172A",
+    title: isDark ? "#F8FAFC" : "#1E293B",
+    muted: isDark ? "#94A3B8" : "#64748B",
+    faint: isDark ? "#64748B" : "#94A3B8",
+    placeholder: isDark ? "#64748B" : "#999999",
+    primary: "#6200EE",
+    primaryIcon: isDark ? "#A78BFA" : "#6200EE",
+    accentBar: isDark ? "#A78BFA" : "#6200EE",
+    success: "#10B981",
+    completedBg: isDark ? "#052E2B" : "#F0FDF4",
+    edit: isDark ? "#38BDF8" : "#007BFF",
+    editDisabled: isDark ? "#475569" : "#CBD5E1",
+    danger: isDark ? "#F87171" : "#DC3545",
+    emptyIcon: isDark ? "#334155" : "#CBD5E1",
+    cancelBg: isDark ? "#334155" : "#F1F5F9",
+    cancelText: isDark ? "#E2E8F0" : "#64748B",
+    overlay: isDark ? "rgba(0, 0, 0, 0.65)" : "rgba(15, 23, 42, 0.5)",
+  };
+}
+type Colors = ReturnType<typeof getColors>;
+
+function createStyles(c: Colors, isDark: boolean) {
+  return StyleSheet.create({
+    headerBlock: { marginBottom: 20, alignItems: "center" },
+    headerTitle: {
+      fontSize: 24,
+      fontWeight: "800",
+      color: c.text,
+      letterSpacing: -0.5,
+    },
+    headerSubtitle: {
+      fontSize: 14,
+      color: c.muted,
+      marginTop: 4,
+      fontWeight: "500",
+    },
+    safeArea: { flex: 1, backgroundColor: c.bg },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      backgroundColor: c.bg,
+    },
+    container: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
+
+    /* Add Task Section */
+    inputCard: {
+      backgroundColor: c.surface,
+      padding: 12,
+      borderRadius: 15,
+      elevation: 3,
+      marginBottom: 15,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: c.border,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.1,
+      shadowRadius: 4,
+    },
+    input: {
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      padding: 10,
+      marginBottom: 8,
+      fontSize: 15,
+      color: c.text,
+      backgroundColor: c.surface,
+    },
+    addBtn: {
+      backgroundColor: c.primary,
+      padding: 10,
+      borderRadius: 10,
+      marginTop: 8,
+      alignItems: "center",
+    },
+    addBtnText: {
+      color: "#FFFFFF",
+      textAlign: "center",
+      fontWeight: "bold",
+      fontSize: 15,
+    },
+
+    /* Task Cards */
+    taskCard: {
+      backgroundColor: c.surface,
+      padding: 16,
+      borderRadius: 16,
+      marginBottom: 12,
+      elevation: 2,
+      borderLeftWidth: 4,
+      borderLeftColor: c.accentBar,
+      borderWidth: isDark ? 1 : 0,
+      borderColor: c.border,
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.04,
+      shadowRadius: 4,
+    },
+    taskCardCompleted: {
+      borderLeftColor: c.success,
+      backgroundColor: c.completedBg,
+    },
+    cardHeaderArea: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+      width: "100%",
+    },
+    textContainer: { flex: 1, paddingRight: 12 },
+    checkboxTouchTarget: { padding: 2, alignSelf: "flex-start" },
+    textLineThrough: { textDecorationLine: "line-through", color: c.faint },
+    taskTitle: {
+      fontSize: 16,
+      fontWeight: "700",
+      color: c.title,
+      marginBottom: 4,
+    },
+    taskDesc: { fontSize: 13, color: c.muted, marginBottom: 6 },
+    cardBottom: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 10,
+      borderTopWidth: 1,
+      borderTopColor: c.divider,
+      paddingTop: 8,
+    },
+    dateText: { fontSize: 11, color: c.faint, fontWeight: "500" },
+    actionGroup: { flexDirection: "row", alignItems: "center" },
+    iconBtn: { marginLeft: 12, padding: 2 },
+
+    emptyWrap: { alignItems: "center", marginTop: 40 },
+    emptyText: { color: c.faint, fontSize: 16, marginTop: 10 },
+
+    /* Modal */
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: c.overlay,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalContent: {
+      width: "90%",
+      backgroundColor: c.surface,
+      borderRadius: 20,
+      padding: 22,
+      elevation: 10,
+    },
+    modalTitle: {
+      fontSize: 18,
+      fontWeight: "700",
+      color: c.text,
+      marginBottom: 16,
+      textAlign: "center",
+    },
+    modalInput: {
+      borderBottomWidth: 1,
+      borderBottomColor: c.border,
+      padding: 10,
+      marginBottom: 12,
+      fontSize: 15,
+      color: c.text,
+    },
+    buttonRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 16,
+    },
+    cancelBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      backgroundColor: c.cancelBg,
+    },
+    cancelBtnText: { color: c.cancelText, fontWeight: "600" },
+    saveBtn: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+      backgroundColor: c.primary,
+    },
+    saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
+  });
+}
+
+const lightColors = getColors(false);
+const darkColors = getColors(true);
+const lightStyles = createStyles(lightColors, false);
+const darkStyles = createStyles(darkColors, true);
+
+/* ------------------------------------------------------------------ */
+/* Screen                                                              */
+/* ------------------------------------------------------------------ */
 export default function Dashboard() {
-  const [tasks, setTasks] = useState([]);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  const c = isDark ? darkColors : lightColors;
+  const styles = isDark ? darkStyles : lightStyles;
+
+  const [tasks, setTasks] = useState<any[]>([]);
   const [title, setTitle] = useState("");
   const [desc, setDesc] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  const [toggleLoadingId, setToggleLoadingId] = useState(null);
+  const [toggleLoadingId, setToggleLoadingId] = useState<number | null>(null);
 
   // Modals
   const [isEditModalVisible, setEditModalVisible] = useState(false);
-  const [editingTask, setEditingTask] = useState({
+  const [editingTask, setEditingTask] = useState<{
+    sno: number | null;
+    title: string;
+    desc: string;
+  }>({
     sno: null,
     title: "",
     desc: "",
@@ -60,7 +273,6 @@ export default function Dashboard() {
 
   const router = useRouter();
 
-  // Fetch Tasks Function (not wrapped in useCallback to avoid dependency issues)
   const fetchTasks = async () => {
     try {
       const response = await fetchWithTimeout(`${API_BASE}/dashboard`, {
@@ -89,7 +301,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchTasks();
-  }, []); // Empty dependency array - runs once on mount
+  }, []);
 
   const handleAddTask = async () => {
     if (!title.trim()) {
@@ -166,7 +378,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleToggleComplete = async (sno) => {
+  const handleToggleComplete = async (sno: number) => {
     setToggleLoadingId(sno);
     try {
       const response = await fetchWithTimeout(
@@ -207,7 +419,7 @@ export default function Dashboard() {
     }
   };
 
-  const handleDelete = (sno) => {
+  const handleDelete = (sno: number) => {
     Alert.alert(
       "Delete Task",
       "Are you sure you want to permanently delete this task?",
@@ -249,15 +461,16 @@ export default function Dashboard() {
   if (loading) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#6200EE" />
+        <ActivityIndicator size="large" color={c.primaryIcon} />
       </SafeAreaView>
     );
   }
 
+  const keyboardAppearance = isDark ? "dark" : "light";
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* ✅ ADD THIS NEW HEADER */}
         <View style={styles.headerBlock}>
           <Text style={styles.headerTitle}>Task Dashboard</Text>
           <Text style={styles.headerSubtitle}>
@@ -265,22 +478,24 @@ export default function Dashboard() {
           </Text>
         </View>
 
-        {/* Add Task Input Card - Compact */}
+        {/* Add Task Input Card */}
         <View style={styles.inputCard}>
           <TextInput
-            style={[styles.input, { color: "#000000" }]}
+            style={styles.input}
             placeholder="Task Title..."
-            placeholderTextColor="#999"
+            placeholderTextColor={c.placeholder}
             value={title}
             onChangeText={setTitle}
+            keyboardAppearance={keyboardAppearance}
           />
           <TextInput
-            style={[styles.input, { height: 60, color: "#000000" }]}
+            style={[styles.input, { height: 60 }]}
             placeholder="Description..."
-            placeholderTextColor="#999"
+            placeholderTextColor={c.placeholder}
             multiline
             value={desc}
             onChangeText={setDesc}
+            keyboardAppearance={keyboardAppearance}
           />
           <TouchableOpacity
             style={styles.addBtn}
@@ -298,6 +513,7 @@ export default function Dashboard() {
         {/* Task List */}
         <FlatList
           data={tasks}
+          extraData={isDark}
           keyExtractor={(item) => item.SNo.toString()}
           contentContainerStyle={{ paddingBottom: 20 }}
           showsVerticalScrollIndicator={false}
@@ -338,7 +554,7 @@ export default function Dashboard() {
                   {toggleLoadingId === item.SNo ? (
                     <ActivityIndicator
                       size="small"
-                      color="#6200EE"
+                      color={c.primaryIcon}
                       style={{ padding: 2 }}
                     />
                   ) : (
@@ -349,7 +565,7 @@ export default function Dashboard() {
                           : "checkbox-blank-circle-outline"
                       }
                       size={24}
-                      color={item.is_completed ? "#10B981" : "#6200EE"}
+                      color={item.is_completed ? c.success : c.primaryIcon}
                     />
                   )}
                 </TouchableOpacity>
@@ -381,7 +597,7 @@ export default function Dashboard() {
                     <MaterialCommunityIcons
                       name="pencil-outline"
                       size={20}
-                      color={item.is_completed ? "#CBD5E1" : "#007BFF"}
+                      color={item.is_completed ? c.editDisabled : c.edit}
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -391,7 +607,7 @@ export default function Dashboard() {
                     <MaterialCommunityIcons
                       name="trash-can-outline"
                       size={20}
-                      color="#DC3545"
+                      color={c.danger}
                     />
                   </TouchableOpacity>
                 </View>
@@ -399,15 +615,13 @@ export default function Dashboard() {
             </View>
           )}
           ListEmptyComponent={
-            <View style={{ alignItems: "center", marginTop: 40 }}>
+            <View style={styles.emptyWrap}>
               <MaterialCommunityIcons
                 name="clipboard-text-outline"
                 size={60}
-                color="#CBD5E1"
+                color={c.emptyIcon}
               />
-              <Text style={{ color: "#94A3B8", fontSize: 16, marginTop: 10 }}>
-                No tasks yet. Add one above!
-              </Text>
+              <Text style={styles.emptyText}>No tasks yet. Add one above!</Text>
             </View>
           }
         />
@@ -424,6 +638,8 @@ export default function Dashboard() {
                   setEditingTask({ ...editingTask, title: text })
                 }
                 placeholder="Title"
+                placeholderTextColor={c.placeholder}
+                keyboardAppearance={keyboardAppearance}
               />
               <TextInput
                 style={[styles.modalInput, { height: 80 }]}
@@ -432,7 +648,9 @@ export default function Dashboard() {
                   setEditingTask({ ...editingTask, desc: text })
                 }
                 placeholder="Description"
+                placeholderTextColor={c.placeholder}
                 multiline
+                keyboardAppearance={keyboardAppearance}
               />
               <View style={styles.buttonRow}>
                 <TouchableOpacity
@@ -460,191 +678,3 @@ export default function Dashboard() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  // ✅ ADD THESE
-  headerBlock: {
-    marginBottom: 20,
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: "#0F172A",
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: "#64748B",
-    marginTop: 4,
-    fontWeight: "500",
-  },
-  safeArea: { flex: 1, backgroundColor: "#F4F7FE" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  container: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
-
-  /* Add Task Section - Compact */
-  inputCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 12,
-    borderRadius: 15,
-    elevation: 3,
-    marginBottom: 15,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  input: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    padding: 10,
-    marginBottom: 8,
-    fontSize: 15,
-    color: "#000000",
-    backgroundColor: "#FFFFFF",
-  },
-  addBtn: {
-    backgroundColor: "#6200EE",
-    padding: 10,
-    borderRadius: 10,
-    marginTop: 8,
-    alignItems: "center",
-  },
-  addBtnText: {
-    color: "#FFFFFF",
-    textAlign: "center",
-    fontWeight: "bold",
-    fontSize: 15,
-  },
-
-  /* Task Cards */
-  taskCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-    elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: "#6200EE",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-  },
-  taskCardCompleted: { borderLeftColor: "#10B981", backgroundColor: "#F0FDF4" },
-  cardHeaderArea: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    width: "100%",
-  },
-  textContainer: { flex: 1, paddingRight: 12 },
-  checkboxTouchTarget: { padding: 2, alignSelf: "flex-start" },
-  textLineThrough: { textDecorationLine: "line-through", color: "#94A3B8" },
-  taskTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1E293B",
-    marginBottom: 4,
-  },
-  taskDesc: { fontSize: 13, color: "#64748B", marginBottom: 6 },
-  cardBottom: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    paddingTop: 8,
-  },
-  dateText: { fontSize: 11, color: "#94A3B8", fontWeight: "500" },
-  actionGroup: { flexDirection: "row", alignItems: "center" },
-  iconBtn: { marginLeft: 12, padding: 2 },
-
-  /* Modals & Buttons */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(15, 23, 42, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    width: "90%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 22,
-    elevation: 10,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0F172A",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  modalInput: {
-    borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0",
-    padding: 10,
-    marginBottom: 12,
-    fontSize: 15,
-    color: "#0F172A",
-  },
-  buttonRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-  },
-  cancelBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: "#F1F5F9",
-  },
-  cancelBtnText: { color: "#64748B", fontWeight: "600" },
-  saveBtn: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    backgroundColor: "#6200EE",
-  },
-  saveBtnText: { color: "#FFFFFF", fontWeight: "600" },
-
-  /* Profile Card */
-  profileCard: {
-    width: "80%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    padding: 24,
-    alignItems: "center",
-    elevation: 10,
-  },
-  profileAvatarLarge: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#6200EE",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  avatarTextLarge: { color: "#FFFFFF", fontSize: 26, fontWeight: "700" },
-  profileName: { fontSize: 18, fontWeight: "700", color: "#0F172A" },
-  profileSubtitle: { fontSize: 13, color: "#64748B", marginTop: 2 },
-  profileDivider: {
-    width: "100%",
-    height: 1,
-    backgroundColor: "#F1F5F9",
-    marginVertical: 18,
-  },
-  logoutModalBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    backgroundColor: "#FEF2F2",
-  },
-  logoutModalText: { color: "#DC2626", fontWeight: "600", fontSize: 14 },
-});

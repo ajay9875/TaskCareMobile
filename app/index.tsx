@@ -15,8 +15,8 @@ import {
   View,
 } from "react-native";
 import AuthDialog from "../components/AuthDialog";
-import FestivalBlock from "../components/FestivalBlock";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 
 type TimeGreeting = {
   label: "Good morning" | "Good afternoon" | "Good evening" | "Good night";
@@ -52,11 +52,7 @@ function getTimeGreeting(date: Date = new Date()): TimeGreeting {
       accentColor: "#7C3AED",
     };
   }
-  return {
-    label: "Good night",
-    icon: "moon-outline",
-    accentColor: "#1E293B",
-  };
+  return { label: "Good night", icon: "moon-outline", accentColor: "#1E293B" };
 }
 
 export default function LandingScreen() {
@@ -64,29 +60,33 @@ export default function LandingScreen() {
   const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 
   const hasLoadedSuccessfullyRef = useRef(false);
-
   const { user, isLoggedIn, checkSession } = useAuth();
+
+  // ✅ Theming
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
   const [errorType, setErrorType] = useState<"offline" | "server" | null>(null);
-
   const [hasLoadedSuccessfully, setHasLoadedSuccessfully] = useState(false);
   const [isGuestDialogVisible, setGuestDialogVisible] = useState(false);
   const [greeting, setGreeting] = useState<TimeGreeting>(() =>
     getTimeGreeting(),
   );
 
-  // AFTER
   const [publicStats, setPublicStats] = useState<{
     total_users: number;
     total_steps: number;
     tasks_handled: number;
+    total_teams: number;
+    total_api_calls: number;
     display: {
       total_users: string;
       total_steps: string;
       tasks_handled: string;
+      total_teams: string;
+      total_api_calls: string;
     };
   } | null>(null);
 
@@ -98,20 +98,14 @@ export default function LandingScreen() {
 
   const loadHomeData = useCallback(
     async (isRefresh = false) => {
-      if (isRefresh) {
-        setRefreshing(true);
-      } else if (!hasLoadedSuccessfullyRef.current) {
-        setLoading(true);
-      }
+      if (isRefresh) setRefreshing(true);
+      else if (!hasLoadedSuccessfullyRef.current) setLoading(true);
 
       setErrorType(null);
-
       setGreeting(getTimeGreeting());
 
       try {
-        // 1. Check actual internet connectivity
         const networkState = await NetInfo.fetch();
-
         if (
           networkState.isConnected === false ||
           networkState.isInternetReachable === false
@@ -120,52 +114,44 @@ export default function LandingScreen() {
           return;
         }
 
-        // 2. Check whether the backend is reachable
-        if (!API_BASE) {
-          throw new Error("API configuration unavailable");
-        }
+        if (!API_BASE) throw new Error("API configuration unavailable");
 
         const res = await fetch(`${API_BASE}/public/stats`, {
           credentials: "include",
         });
-
-        if (!res.ok) {
-          throw new Error(`Backend returned status ${res.status}`);
-        }
+        if (!res.ok) throw new Error(`Backend returned status ${res.status}`);
 
         const data = await res.json();
-
-        if (data.status !== "success") {
+        if (data.status !== "success")
           throw new Error("Invalid backend response");
-        }
 
-        // 3. Update public statistics
         setPublicStats({
           total_users: Number(data.total_users) || 0,
           total_steps: Number(data.total_steps) || 0,
           tasks_handled: Number(data.tasks_handled) || 0,
+          total_teams: Number(data.total_teams) || 0,
+          total_api_calls: Number(data.total_api_calls) || 0,
           display: {
             total_users:
               data.display?.total_users ?? String(data.total_users ?? 0),
-
             total_steps:
               data.display?.total_steps ?? String(data.total_steps ?? 0),
-
             tasks_handled:
               data.display?.tasks_handled ?? String(data.tasks_handled ?? 0),
+            total_teams:
+              data.display?.total_teams ?? String(data.total_teams ?? 0),
+            total_api_calls:
+              data.display?.total_api_calls ??
+              String(data.total_api_calls ?? 0),
           },
         });
 
-        // 4. Refresh authentication only after connectivity is confirmed
         await checkSession();
-
         hasLoadedSuccessfullyRef.current = true;
         setHasLoadedSuccessfully(true);
         setErrorType(null);
       } catch (error) {
         console.log("Landing screen loading error:", error);
-
-        // Internet was available, but the backend request failed.
         setErrorType("server");
       } finally {
         setLoading(false);
@@ -175,14 +161,13 @@ export default function LandingScreen() {
     [API_BASE, checkSession],
   );
 
-  // Initial loading
   if (loading && !hasLoadedSuccessfully) {
     return (
       <View
         style={[
           styles.container,
           {
-            backgroundColor: "#1a1a2e",
+            backgroundColor: isDark ? "#0F172A" : "#1a1a2e",
             justifyContent: "center",
             alignItems: "center",
           },
@@ -196,16 +181,11 @@ export default function LandingScreen() {
     );
   }
 
-  // Connection/backend error screen
   if (errorType && !hasLoadedSuccessfully) {
     const isOffline = errorType === "offline";
-
     return (
       <SafeAreaView
-        style={{
-          flex: 1,
-          backgroundColor: "#1a1a2e",
-        }}
+        style={{ flex: 1, backgroundColor: isDark ? "#0F172A" : "#1a1a2e" }}
       >
         <View style={styles.errorContainer}>
           <MaterialCommunityIcons
@@ -214,19 +194,16 @@ export default function LandingScreen() {
             color={isOffline ? "#ff6b35" : "#fbbf24"}
             style={{ marginBottom: 20 }}
           />
-
           <Text style={styles.errorTitle}>
             {isOffline
               ? "No Internet Connection"
               : "Service Temporarily Unavailable"}
           </Text>
-
           <Text style={styles.errorSubtext}>
             {isOffline
               ? "Your device is currently offline. Please check your internet connection and try again."
               : "We are currently unable to connect to our servers. Your internet connection may be working, but our service is temporarily unavailable. Please try again later."}
           </Text>
-
           <TouchableOpacity
             style={styles.retryBtn}
             onPress={() => loadHomeData()}
@@ -245,31 +222,28 @@ export default function LandingScreen() {
               </>
             )}
           </TouchableOpacity>
-
-          <Text
-            style={{
-              color: "#94A3B8",
-              fontSize: 12,
-              marginTop: 22,
-              textAlign: "center",
-            }}
-          >
-            {isOffline
-              ? "FitWisely will be available once your connection is restored."
-              : "Thank you for your patience. Please try again shortly."}
-          </Text>
         </View>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: "#f8f9fa" }}>
-      {/* ✅ Signed in banner (Pill shape, centered, larger icon) */}
+    <SafeAreaView
+      style={{ flex: 1, backgroundColor: isDark ? "#0F172A" : "#f8f9fa" }}
+    >
       {isLoggedIn && (
-        <View style={styles.signedInBanner}>
-          <Ionicons name="person-circle" size={26} color="#2e7d32" />
-          <Text style={styles.signedInText}>
+        <View
+          style={[
+            styles.signedInBanner,
+            isDark && { backgroundColor: "#064E3B", borderColor: "#059669" },
+          ]}
+        >
+          <Ionicons
+            name="person-circle"
+            size={26}
+            color={isDark ? "#6EE7B7" : "#2e7d32"}
+          />
+          <Text style={[styles.signedInText, isDark && { color: "#D1FAE5" }]}>
             Signed in as{" "}
             <Text style={{ fontWeight: "bold" }}>{user?.name}</Text>
           </Text>
@@ -284,151 +258,48 @@ export default function LandingScreen() {
             onRefresh={() => loadHomeData(true)}
             tintColor="#4ecca3"
             colors={["#4ecca3"]}
-            progressBackgroundColor="#ffffff"
+            progressBackgroundColor={isDark ? "#1E293B" : "#ffffff"}
           />
         }
       >
-        <View style={styles.greetingCard}>
+        <View
+          style={[
+            styles.greetingCard,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
           <View style={styles.greetingTopRow}>
             <Ionicons
               name={greeting.icon}
               size={20}
-              color={greeting.accentColor}
+              color={isDark ? "#F59E0B" : greeting.accentColor}
             />
-            <Text style={styles.greetingText}>
+            <Text style={[styles.greetingText, isDark && { color: "#F8FAFC" }]}>
               {isLoggedIn && user?.name
                 ? `${greeting.label}, ${user.name.trim().split(" ")[0]}`
                 : greeting.label}
             </Text>
           </View>
-          <Text style={styles.greetingSubtext}>
+          <Text
+            style={[styles.greetingSubtext, isDark && { color: "#94A3B8" }]}
+          >
             {isLoggedIn
               ? "Ready to check your steps, teams, and daily tasks?"
               : "Track daily steps, team challenges, and tasks effortlessly."}
           </Text>
         </View>
 
-        {errorType && (
-          <View
-            style={{
-              width: "100%",
-              backgroundColor: errorType === "offline" ? "#FFF7ED" : "#FEF2F2",
-              borderColor: errorType === "offline" ? "#FDBA74" : "#FECACA",
-              borderWidth: 1,
-              borderRadius: 12,
-              padding: 14,
-              marginBottom: 16,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <MaterialCommunityIcons
-                name={
-                  errorType === "offline" ? "wifi-off" : "cloud-alert-outline"
-                }
-                size={22}
-                color={errorType === "offline" ? "#C2410C" : "#DC2626"}
-              />
-
-              <Text
-                style={{
-                  fontWeight: "800",
-                  fontSize: 14,
-                  marginLeft: 8,
-                  color: "#1E293B",
-                  flex: 1,
-                }}
-              >
-                {errorType === "offline"
-                  ? "Internet connection lost"
-                  : "Server temporarily unavailable"}
-              </Text>
-            </View>
-
-            <Text
-              style={{
-                fontSize: 13,
-                color: "#475569",
-                marginTop: 6,
-                lineHeight: 19,
-              }}
-            >
-              {errorType === "offline"
-                ? "Please check your internet connection and retry."
-                : "We couldn't reach our server. Please try again later."}
-            </Text>
-
-            <TouchableOpacity
-              onPress={() => loadHomeData(true)}
-              style={{
-                marginTop: 10,
-                alignSelf: "flex-start",
-                flexDirection: "row",
-                alignItems: "center",
-              }}
-            >
-              <MaterialCommunityIcons
-                name="refresh"
-                size={18}
-                color="#2563EB"
-              />
-
-              <Text
-                style={{
-                  color: "#2563EB",
-                  fontWeight: "700",
-                  marginLeft: 5,
-                }}
-              >
-                Retry Connection
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-        <FestivalBlock />
-
         {/* ⭐ TRUST METRICS */}
         <View style={styles.statsGrid}>
-          {/* Only render if value > 0 */}
-          {publicStats?.tasks_handled > 0 && (
-            <View
-              style={[
-                styles.statCard,
-                publicStats?.total_steps === 0 &&
-                  publicStats?.total_users === 0 &&
-                  styles.statCardFullWidth,
-              ]}
-            >
-              <View
-                style={[styles.statAccent, { backgroundColor: "#e67e22" }]}
-              />
-              <View
-                style={[
-                  styles.statIconCircle,
-                  { backgroundColor: "#e67e22" + "18" },
-                ]}
-              >
-                <Ionicons name="briefcase-outline" size={22} color="#e67e22" />
-              </View>
-              <Text style={styles.statValue}>
-                {publicStats.display.tasks_handled}
-              </Text>
-              <Text style={styles.statLabel}>Tasks Managed</Text>
-              <Text style={styles.statCaption}>Lifetime</Text>
-            </View>
-          )}
-
           {publicStats?.total_steps > 0 && (
             <View
               style={[
                 styles.statCard,
-                !publicStats?.tasks_handled &&
-                  publicStats?.total_users === 0 &&
-                  styles.statCardFullWidth,
+                { order: 1 },
+                isDark && {
+                  backgroundColor: "#1E293B",
+                  borderColor: "#334155",
+                },
               ]}
             >
               <View
@@ -437,16 +308,74 @@ export default function LandingScreen() {
               <View
                 style={[
                   styles.statIconCircle,
-                  { backgroundColor: "#4ecca3" + "18" },
+                  {
+                    backgroundColor: "#4ecca3" + "18",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    marginBottom: 8,
+                  },
                 ]}
               >
-                <Ionicons name="footsteps-outline" size={22} color="#4ecca3" />
+                <Ionicons name="footsteps-outline" size={18} color="#4ecca3" />
               </View>
-              <Text style={styles.statValue}>
+              <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
                 {publicStats.display.total_steps}
               </Text>
-              <Text style={styles.statLabel}>Steps</Text>
-              <Text style={styles.statCaption}>Tracked</Text>
+              <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+                Steps
+              </Text>
+              <Text
+                style={[styles.statCaption, isDark && { color: "#64748B" }]}
+              >
+                Tracked
+              </Text>
+            </View>
+          )}
+
+          {publicStats?.total_api_calls > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                { order: 2 },
+                isDark && {
+                  backgroundColor: "#1E293B",
+                  borderColor: "#334155",
+                },
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#8B5CF6" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  {
+                    backgroundColor: "#8B5CF6" + "18",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    marginBottom: 8,
+                  },
+                ]}
+              >
+                <MaterialCommunityIcons
+                  name="server-network"
+                  size={18}
+                  color="#8B5CF6"
+                />
+              </View>
+              <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
+                {publicStats.display.total_api_calls}
+              </Text>
+              <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+                API Calls
+              </Text>
+              <Text
+                style={[styles.statCaption, isDark && { color: "#64748B" }]}
+              >
+                Handled
+              </Text>
             </View>
           )}
 
@@ -454,9 +383,11 @@ export default function LandingScreen() {
             <View
               style={[
                 styles.statCard,
-                !publicStats?.tasks_handled &&
-                  !publicStats?.total_steps &&
-                  styles.statCardFullWidth,
+                { order: 3 },
+                isDark && {
+                  backgroundColor: "#1E293B",
+                  borderColor: "#334155",
+                },
               ]}
             >
               <View
@@ -465,45 +396,156 @@ export default function LandingScreen() {
               <View
                 style={[
                   styles.statIconCircle,
-                  { backgroundColor: "#0300a8" + "18" },
+                  {
+                    backgroundColor: "#0300a8" + "18",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    marginBottom: 8,
+                  },
                 ]}
               >
-                <Ionicons name="people-outline" size={22} color="#0300a8" />
+                <Ionicons name="people-outline" size={18} color="#0300a8" />
               </View>
-              <Text style={styles.statValue}>
+              <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
                 {publicStats.display.total_users}
               </Text>
-              <Text style={styles.statLabel}>Users</Text>
-              <Text style={styles.statCaption}>Registered</Text>
+              <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+                Users
+              </Text>
+              <Text
+                style={[styles.statCaption, isDark && { color: "#64748B" }]}
+              >
+                Registered
+              </Text>
             </View>
           )}
 
-          {/* ✅ Safe & Secure is always visible */}
+          {publicStats?.total_teams > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                { order: 4 },
+                isDark && {
+                  backgroundColor: "#1E293B",
+                  borderColor: "#334155",
+                },
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#0EA5E9" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  {
+                    backgroundColor: "#0EA5E9" + "18",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    marginBottom: 8,
+                  },
+                ]}
+              >
+                <Ionicons name="people" size={18} color="#0EA5E9" />
+              </View>
+              <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
+                {publicStats.display.total_teams}
+              </Text>
+              <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+                Teams
+              </Text>
+              <Text
+                style={[styles.statCaption, isDark && { color: "#64748B" }]}
+              >
+                Active
+              </Text>
+            </View>
+          )}
+
+          {publicStats?.tasks_handled > 0 && (
+            <View
+              style={[
+                styles.statCard,
+                { order: 5 },
+                isDark && {
+                  backgroundColor: "#1E293B",
+                  borderColor: "#334155",
+                },
+              ]}
+            >
+              <View
+                style={[styles.statAccent, { backgroundColor: "#e67e22" }]}
+              />
+              <View
+                style={[
+                  styles.statIconCircle,
+                  {
+                    backgroundColor: "#e67e22" + "18",
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    marginBottom: 8,
+                  },
+                ]}
+              >
+                <Ionicons name="briefcase-outline" size={18} color="#e67e22" />
+              </View>
+              <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
+                {publicStats.display.tasks_handled}
+              </Text>
+              <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+                Tasks
+              </Text>
+              <Text
+                style={[styles.statCaption, isDark && { color: "#64748B" }]}
+              >
+                Managed
+              </Text>
+            </View>
+          )}
+
           <View
             style={[
               styles.statCard,
-              !publicStats?.tasks_handled &&
-                !publicStats?.total_steps &&
-                !publicStats?.total_users &&
-                styles.statCardFullWidth,
+              { order: 6 },
+              isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
             ]}
           >
             <View style={[styles.statAccent, { backgroundColor: "#2ecc71" }]} />
             <View
               style={[
                 styles.statIconCircle,
-                { backgroundColor: "#2ecc71" + "18" },
+                {
+                  backgroundColor: "#2ecc71" + "18",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  marginBottom: 8,
+                },
               ]}
             >
-              <Ionicons name="shield-checkmark" size={22} color="#2ecc71" />
+              <Ionicons name="shield-checkmark" size={18} color="#2ecc71" />
             </View>
-            <Text style={styles.statValue}>100%</Text>
-            <Text style={styles.statLabel}>Safe & Secure</Text>
-            <Text style={styles.statCaption}>Encrypted</Text>
+            <Text style={[styles.statValue, isDark && { color: "#F8FAFC" }]}>
+              100%
+            </Text>
+            <Text style={[styles.statLabel, isDark && { color: "#94A3B8" }]}>
+              Safe
+            </Text>
+            <Text style={[styles.statCaption, isDark && { color: "#64748B" }]}>
+              Encrypted
+            </Text>
           </View>
         </View>
 
-        <View style={styles.card}>
+        {/* Fitness Tracker Card */}
+        <View
+          style={[
+            styles.card,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
           <View style={styles.cardHeader}>
             <Ionicons
               name="fitness"
@@ -511,59 +553,79 @@ export default function LandingScreen() {
               color="#4ecca3"
               style={styles.cardIcon}
             />
-            <Text style={styles.cardTitle}>Fitness Tracker</Text>
+            <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+              Fitness Tracker
+            </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="footsteps" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="footsteps"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Real-time Step Counter – Track your steps dynamically on screen.
             </Text>
           </View>
-          {/* ✅ Replaced Treadmill with Walking Pace */}
           <View style={styles.featureRow}>
-            <MaterialCommunityIcons name="speedometer" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <MaterialCommunityIcons
+              name="speedometer"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Pace & Distance – Automatically calculates your walking speed and
               distance.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="sync-circle" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="sync-circle"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Auto-Sync Metrics – Saves records to the database seamlessly in
               the background.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="time" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="time"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Daily fitness summary via email.
             </Text>
           </View>
         </View>
 
+        {/* How to use Fitness Tracker */}
         <View style={styles.stepsBox}>
-          <Text style={styles.stepsTitle}>How to use the Fitness Tracker:</Text>
+          <Text style={[styles.stepsTitle, isDark && { color: "#F8FAFC" }]}>
+            How to use the Fitness Tracker:
+          </Text>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons
               name="shield-check"
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               1. Grant physical activity permission when prompted.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons name="walk" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               2. Head to the tracking screen to start walking and tracking your
               steps.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <Ionicons name="phone-portrait-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               3. Keep the app running in the background; steps sync
               automatically.
             </Text>
@@ -574,33 +636,50 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               4. On Android, set battery to "Unrestricted" for accurate tracking
               in the background.
             </Text>
           </View>
 
-          {/* ⚠️ Warning box — do not log out */}
-          <View style={styles.warningBox}>
+          <View
+            style={[
+              styles.warningBox,
+              isDark && { backgroundColor: "#422006", borderColor: "#78350F" },
+            ]}
+          >
             <View style={styles.warningHeader}>
-              <Ionicons name="warning" size={20} color="#B45309" />
-              <Text style={styles.warningTitle}>Important</Text>
+              <Ionicons
+                name="warning"
+                size={20}
+                color={isDark ? "#FCD34D" : "#B45309"}
+              />
+              <Text
+                style={[styles.warningTitle, isDark && { color: "#FCD34D" }]}
+              >
+                Important
+              </Text>
             </View>
-            <Text style={styles.warningText}>
+            <Text style={[styles.warningText, isDark && { color: "#FDE68A" }]}>
               <Text style={{ fontWeight: "800" }}>Do NOT log out</Text> during
               the day. Logging out stops the native step tracker and clears your
               local queue — any unsynced steps and today's progress will be lost
               and cannot be recovered.
             </Text>
-            <Text style={styles.warningText}>
+            <Text style={[styles.warningText, isDark && { color: "#FDE68A" }]}>
               If you must sign out, first open the Fitness Tracker screen and
               wait for the 10secs to sync and save your current progress.
             </Text>
           </View>
         </View>
 
-        {/* ✅ NEW: Teams feature card */}
-        <View style={styles.card}>
+        {/* Teams & Leaderboards Card */}
+        <View
+          style={[
+            styles.card,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
           <View style={styles.cardHeader}>
             <Ionicons
               name="people"
@@ -608,50 +687,70 @@ export default function LandingScreen() {
               color="#4ecca3"
               style={styles.cardIcon}
             />
-            <Text style={styles.cardTitle}>Teams & Leaderboards</Text>
+            <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+              Teams & Leaderboards
+            </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="add-circle" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="add-circle"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Create Teams – Build your own step challenge groups.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="link" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="link"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Join with Code – Invite friends using a simple join code.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="trophy" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="trophy"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Live Leaderboard – Compete on daily step counts in real time.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="share-social" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="share-social"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Share Invites – Send one-tap join links via any messenger.
             </Text>
           </View>
         </View>
 
-        {/* ✅ NEW: Teams how-to block */}
+        {/* How to use Teams */}
         <View style={styles.stepsBox}>
-          <Text style={styles.stepsTitle}>How to create a Team:</Text>
+          <Text style={[styles.stepsTitle, isDark && { color: "#F8FAFC" }]}>
+            How to create a Team:
+          </Text>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons
               name="account-group"
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               1. Log in and open the "Teams" tab from the bottom menu.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <Ionicons name="add-circle-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               2. Tap the "+ Add / Join" pill at the top.
             </Text>
           </View>
@@ -661,39 +760,41 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               3. Enter a team name under "Create a Team" and tap Create.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons name="crown" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               4. You become the admin and receive a unique join code.
             </Text>
           </View>
         </View>
 
         <View style={styles.stepsBox}>
-          <Text style={styles.stepsTitle}>How to use a Team:</Text>
+          <Text style={[styles.stepsTitle, isDark && { color: "#F8FAFC" }]}>
+            How to use a Team:
+          </Text>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons
               name="share-variant"
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               1. Tap "Invite" to share the join code or link with friends.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <Ionicons name="enter-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               2. Friends open Teams → "+ Add / Join" → enter the code → Join.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <Ionicons name="podium-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               3. Daily steps rank automatically — tap any member for history.
             </Text>
           </View>
@@ -703,7 +804,7 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               4. Admins can rename, remove members, or delete the team.
             </Text>
           </View>
@@ -713,13 +814,19 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               5. Join up to 10 teams — tap any pill to switch between them.
             </Text>
           </View>
         </View>
 
-        <View style={styles.card}>
+        {/* Task Manager Card */}
+        <View
+          style={[
+            styles.card,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
           <View style={styles.cardHeader}>
             <Ionicons
               name="clipboard"
@@ -727,39 +834,56 @@ export default function LandingScreen() {
               color="#4ecca3"
               style={styles.cardIcon}
             />
-            <Text style={styles.cardTitle}>Task Manager</Text>
+            <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+              Task Manager
+            </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="create" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="create"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Easy Task Management – Add, edit, and delete items cleanly.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="mail" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="mail"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Daily Email Reminders – Stay on track with pending obligations.
             </Text>
           </View>
           <View style={styles.featureRow}>
-            <Ionicons name="cloud-upload" size={18} color="#555" />
-            <Text style={styles.featureText}>
+            <Ionicons
+              name="cloud-upload"
+              size={18}
+              color={isDark ? "#94A3B8" : "#555"}
+            />
+            <Text style={[styles.featureText, isDark && { color: "#CBD5E1" }]}>
               Secure Cloud Backups – Never lose your data layout updates.
             </Text>
           </View>
         </View>
 
+        {/* How to manage Tasks */}
         <View style={styles.stepsBox}>
-          <Text style={styles.stepsTitle}>How to manage your Tasks:</Text>
+          <Text style={[styles.stepsTitle, isDark && { color: "#F8FAFC" }]}>
+            How to manage your Tasks:
+          </Text>
           <View style={styles.stepRow}>
             <Ionicons name="log-in-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               1. Tap "Get Started" or log into your account.
             </Text>
           </View>
           <View style={styles.stepRow}>
             <Ionicons name="add-circle-outline" size={20} color="#4ecca3" />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               2. Click on "+Add" to insert new tasks.
             </Text>
           </View>
@@ -769,7 +893,9 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>3. Check them off as completed.</Text>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
+              3. Check them off as completed.
+            </Text>
           </View>
           <View style={styles.stepRow}>
             <MaterialCommunityIcons
@@ -777,7 +903,7 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               4. Edit tasks anytime using the pencil icon.
             </Text>
           </View>
@@ -787,13 +913,19 @@ export default function LandingScreen() {
               size={20}
               color="#4ecca3"
             />
-            <Text style={styles.stepText}>
+            <Text style={[styles.stepText, isDark && { color: "#CBD5E1" }]}>
               5. Delete tasks permanently using the trash icon.
             </Text>
           </View>
         </View>
       </ScrollView>
-      <View style={styles.bottomActionContainer}>
+
+      <View
+        style={[
+          styles.bottomActionContainer,
+          isDark && { backgroundColor: "#1E293B", borderTopColor: "#334155" },
+        ]}
+      >
         {isLoggedIn ? (
           <TouchableOpacity
             style={styles.dashboardBtn}
@@ -812,7 +944,7 @@ export default function LandingScreen() {
           </TouchableOpacity>
         )}
       </View>
-      {/* ✅ REPLACED MODAL WITH REUSABLE COMPONENT */}
+
       <AuthDialog
         visible={isGuestDialogVisible}
         onClose={() => setGuestDialogVisible(false)}
@@ -832,11 +964,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#e9ecef",
   },
-  greetingTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
+  greetingTopRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   greetingText: {
     fontSize: 19,
     fontWeight: "800",
@@ -864,11 +992,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 6,
   },
-  warningTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#B45309",
-  },
+  warningTitle: { fontSize: 14, fontWeight: "800", color: "#B45309" },
   warningText: {
     fontSize: 13,
     color: "#78350F",
@@ -887,23 +1011,12 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     marginTop: 15,
     marginBottom: 5,
-    alignSelf: "center", // This centers the pill
-    gap: 10, // Space between icon and text
+    alignSelf: "center",
+    gap: 10,
   },
-  signedInText: {
-    fontSize: 15,
-    color: "#1b5e20",
-  },
+  signedInText: { fontSize: 15, color: "#1b5e20" },
   container: { flex: 1, paddingHorizontal: 15 },
   scrollContainer: { padding: 20, paddingBottom: 30, alignItems: "center" },
-  shortSubtext: {
-    textAlign: "center",
-    color: "#666",
-    marginBottom: 20,
-    lineHeight: 22,
-    paddingHorizontal: 10,
-    fontSize: 14,
-  },
   statsGrid: {
     width: "100%",
     flexDirection: "row",
@@ -913,36 +1026,31 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   statCard: {
-    width: "48%",
+    width: "31.5%",
     backgroundColor: "#ffffff",
-    borderRadius: 16, // Slightly rounder
-    paddingVertical: 20, // More vertical breathing room
-    paddingHorizontal: 10,
-    alignItems: "center", // ✅ Center everything inside the card
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 6,
+    alignItems: "center",
     borderWidth: 1,
     borderColor: "#e9ecef",
     elevation: 2,
     position: "relative",
     overflow: "hidden",
   },
-  statCardFullWidth: {
-    width: "100%", // ✅ Takes up the entire row
-    paddingVertical: 30, // Extra padding to look nice and big
-    alignItems: "center",
-  },
   statValue: {
-    fontSize: 26, // Slightly bigger number
+    fontSize: 20,
     fontWeight: "800",
     color: "#1E293B",
     letterSpacing: -0.5,
-    textAlign: "center", // ✅ Center the text
+    textAlign: "center",
   },
   statLabel: {
     fontSize: 13,
     fontWeight: "700",
     color: "#64748B",
     marginTop: 4,
-    textAlign: "center", // ✅ Center the text
+    textAlign: "center",
   },
   statCaption: {
     fontSize: 10,
@@ -951,7 +1059,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textTransform: "uppercase",
     letterSpacing: 0.5,
-    textAlign: "center", // ✅ Center the text
+    textAlign: "center",
   },
   card: {
     width: "100%",
@@ -1005,7 +1113,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#e9ecef",
   },
   dashboardBtn: {
-    width: "100%", // ✅ Change flex: 1 to width: 100%
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",

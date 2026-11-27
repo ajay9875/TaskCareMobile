@@ -17,11 +17,11 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
+import { useTheme } from "../../context/ThemeContext"; // ✅ Added
 
 const API_BASE = process.env.EXPO_PUBLIC_BASE_API;
 const MAX_TEAMS = 10;
 
-// 🔥 Helper to check for Team Admin status
 function isTeamAdmin(member: any): boolean {
   const role = (member?.role ?? "").toLowerCase();
   return (
@@ -33,12 +33,31 @@ function isTeamAdmin(member: any): boolean {
   );
 }
 
-// 🏅 Medal emoji helper (rank 1–3 get a medal, others just "#N")
-function rankBadge(rank: number) {
-  if (rank === 1) return { text: "🥇 #1", style: styles.firstRank };
-  if (rank === 2) return { text: "🥈 #2", style: styles.secondRank };
-  if (rank === 3) return { text: "🥉 #3", style: styles.thirdRank };
-  return { text: `#${rank}`, style: styles.otherRank };
+function rankBadge(rank: number, isDark: boolean) {
+  const t = {
+    gold: isDark
+      ? { bg: "#422006", border: "#B45309", color: "#FDE68A" }
+      : { bg: "#FEF3C7", border: "#FCD34D", color: "#92400E" },
+    silver: isDark
+      ? { bg: "#334155", border: "#64748B", color: "#F1F5F9" }
+      : { bg: "#E2E8F0", border: "#CBD5E1", color: "#334155" },
+    bronze: isDark
+      ? { bg: "#431407", border: "#C2410C", color: "#FED7AA" }
+      : { bg: "#FFEDD5", border: "#FDBA74", color: "#9A3412" },
+    indigo: isDark
+      ? { bg: "#312E81", border: "#6366F1", color: "#E0E7FF" }
+      : { bg: "#EEF2FF", border: "#C7D2FE", color: "#3730A3" },
+    plain: isDark
+      ? { bg: "#1E293B", border: "#475569", color: "#CBD5E1" }
+      : { bg: "#F1F5F9", border: "#E2E8F0", color: "#475569" },
+  };
+
+  if (rank === 1) return { text: "🥇 #1", ...t.gold };
+  if (rank === 2) return { text: "🥈 #2", ...t.silver };
+  if (rank === 3) return { text: "🥉 #3", ...t.bronze };
+  if (rank === 4) return { text: "🏅 #4", ...t.indigo };
+  if (rank === 5) return { text: "🏅 #5", ...t.indigo };
+  return { text: `#${rank}`, ...t.plain };
 }
 
 export default function MyTeamScreen() {
@@ -46,34 +65,33 @@ export default function MyTeamScreen() {
   const [teams, setTeams] = useState<any[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
 
+  // ✅ Theme
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [fetchError, setFetchError] = useState(false);
   const [teamName, setTeamName] = useState("");
   const [joinCode, setJoinCode] = useState("");
 
-  // ✅ NEW: team count states
   const [teamCount, setTeamCount] = useState(0);
   const [adminTeamCount, setAdminTeamCount] = useState(0);
 
   const { user: currentUser } = useAuth();
 
-  // ✅ NEW: 60s ticker — forces online pills to re-evaluate
   const [, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setTick((t) => t + 1), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  // Rename team modal state
   const [renameModalVisible, setRenameModalVisible] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [isRenaming, setIsRenaming] = useState(false);
 
-  // Delete team modal state
   const [deleteTeamModalVisible, setDeleteTeamModalVisible] = useState(false);
   const [deleteTeamConfirmText, setDeleteTeamConfirmText] = useState("");
   const [isDeletingTeam, setIsDeletingTeam] = useState(false);
 
-  // Delete member modal state
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [memberToDelete, setMemberToDelete] = useState<{
     id: number;
@@ -98,7 +116,6 @@ export default function MyTeamScreen() {
     }
   }, [team_id, teams, router]);
 
-  // ✅ INTERCEPT BACK BUTTON WHEN A TEAM IS SELECTED
   useEffect(() => {
     const onBackPress = () => {
       if (selectedTeamId !== null) {
@@ -107,16 +124,13 @@ export default function MyTeamScreen() {
       }
       return false;
     };
-
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
       onBackPress,
     );
-
     return () => subscription.remove();
   }, [selectedTeamId]);
 
-  // Deep-link prefill
   useEffect(() => {
     if (prefill && typeof prefill === "string") {
       setJoinCode(prefill.toUpperCase());
@@ -124,7 +138,6 @@ export default function MyTeamScreen() {
     }
   }, [prefill]);
 
-  // Fetch teams
   const fetchTeams = async () => {
     setLoading(true);
     setFetchError(false);
@@ -167,8 +180,7 @@ export default function MyTeamScreen() {
     });
   }, [teams]);
 
-  // ── Derived status helpers ────────────────────────────────────
-  const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+  const ONLINE_WINDOW_MS = 15 * 1000;
 
   function isOnlineMember(m: any): boolean {
     if (!m?.last_seen) return false;
@@ -217,34 +229,25 @@ export default function MyTeamScreen() {
     return uniqueUsers.size;
   }
 
-  // 🔥 RANK MAP — Dense ranking (Same logic as admin.tsx)
   const rankMap = useMemo(() => {
     const map = new Map<number, number>();
     if (!activeTeam?.members) return map;
-
-    // Sort by steps descending
     const bySteps = [...activeTeam.members].sort(
       (a: any, b: any) => (b.steps_today ?? 0) - (a.steps_today ?? 0),
     );
-
     let currentRank = 0;
     let previousSteps: number | null = null;
-
     bySteps.forEach((m: any, index: number) => {
       const steps = m.steps_today ?? 0;
-
       if (previousSteps === null || steps !== previousSteps) {
         currentRank = index + 1;
       }
-
       map.set(m.user_id, currentRank);
       previousSteps = steps;
     });
-
     return map;
   }, [activeTeam]);
 
-  // Leaderboard sorting (Steps DESC, ID ASC for tie-breaker)
   const leaderboard = useMemo(() => {
     if (!activeTeam?.members) return [];
     return [...activeTeam.members].sort((a: any, b: any) => {
@@ -415,10 +418,7 @@ export default function MyTeamScreen() {
     try {
       const res = await fetch(
         `${API_BASE}/teams/members/${memberToDelete.id}?team_id=${activeTeam?.id}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        },
+        { method: "DELETE", credentials: "include" },
       );
       const data = await res.json();
       if (res.ok) {
@@ -465,22 +465,21 @@ export default function MyTeamScreen() {
   if (fetchError && teams.length === 0) {
     return (
       <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 20,
-        }}
+        style={[
+          styles.container,
+          isDark && { backgroundColor: "#0F172A" },
+          { justifyContent: "center", alignItems: "center", padding: 20 },
+        ]}
       >
         <MaterialCommunityIcons
           name="cloud-off-outline"
           size={64}
-          color="#94A3B8"
+          color={isDark ? "#334155" : "#94A3B8"}
         />
         <Text
           style={{
             fontSize: 16,
-            color: "#64748B",
+            color: isDark ? "#94A3B8" : "#64748B",
             marginTop: 12,
             textAlign: "center",
           }}
@@ -498,21 +497,42 @@ export default function MyTeamScreen() {
   }
 
   if (loading && teams.length === 0)
-    return <ActivityIndicator style={{ flex: 1 }} size="large" />;
+    return (
+      <ActivityIndicator
+        style={{ flex: 1, backgroundColor: isDark ? "#0F172A" : "#fff" }}
+        size="large"
+      />
+    );
 
-  // ── NO TEAMS / CREATE & JOIN SCREEN ──
   if (teams.length === 0) {
     return (
       <ScrollView
-        style={styles.container}
+        style={[styles.container, isDark && { backgroundColor: "#0F172A" }]}
         contentContainerStyle={{ paddingBottom: 40 }}
       >
-        <Text style={styles.title}>Teams</Text>
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Create a Team</Text>
+        <Text style={[styles.title, isDark && { color: "#F8FAFC" }]}>
+          Teams
+        </Text>
+        <View
+          style={[
+            styles.card,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
+          <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+            Create a Team
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              isDark && {
+                backgroundColor: "#0F172A",
+                borderColor: "#334155",
+                color: "#fff",
+              },
+            ]}
             placeholder="Team Name"
+            placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
             value={teamName}
             onChangeText={setTeamName}
           />
@@ -521,11 +541,26 @@ export default function MyTeamScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>Join a Team</Text>
+        <View
+          style={[
+            styles.card,
+            isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+          ]}
+        >
+          <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+            Join a Team
+          </Text>
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              isDark && {
+                backgroundColor: "#0F172A",
+                borderColor: "#334155",
+                color: "#fff",
+              },
+            ]}
             placeholder="Enter Join Code"
+            placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
             value={joinCode}
             onChangeText={setJoinCode}
             autoCapitalize="characters"
@@ -538,17 +573,19 @@ export default function MyTeamScreen() {
     );
   }
 
-  // ── ACTIVE TEAM DASHBOARD ──
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, isDark && { backgroundColor: "#0F172A" }]}
       contentContainerStyle={{ paddingBottom: 40 }}
       keyboardShouldPersistTaps="handled"
       refreshControl={
-        <RefreshControl refreshing={loading} onRefresh={fetchTeams} />
+        <RefreshControl
+          refreshing={loading}
+          onRefresh={fetchTeams}
+          tintColor={isDark ? "#fff" : undefined}
+        />
       }
     >
-      {/* Horizontal Team Switcher */}
       <View style={styles.switcherContainer}>
         <ScrollView
           horizontal
@@ -560,14 +597,19 @@ export default function MyTeamScreen() {
               key={t.id}
               style={[
                 styles.teamPill,
+                isDark && { backgroundColor: "#1E293B" },
                 selectedTeamId === t.id && styles.teamPillActive,
+                selectedTeamId === t.id &&
+                  isDark && { backgroundColor: "#4F46E5" },
               ]}
               onPress={() => setSelectedTeamId(t.id)}
             >
               <Text
                 style={[
                   styles.teamPillText,
+                  isDark && { color: "#94A3B8" },
                   selectedTeamId === t.id && styles.teamPillTextActive,
+                  selectedTeamId === t.id && isDark && { color: "#fff" },
                 ]}
               >
                 {t.is_admin ? "👑 " : ""}
@@ -578,6 +620,7 @@ export default function MyTeamScreen() {
           <TouchableOpacity
             style={[
               styles.addTeamPill,
+              isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
               selectedTeamId === null && styles.addTeamPillActive,
             ]}
             onPress={() => setSelectedTeamId(null)}
@@ -585,11 +628,18 @@ export default function MyTeamScreen() {
             <Ionicons
               name="add"
               size={20}
-              color={selectedTeamId === null ? "#fff" : "#4F46E5"}
+              color={
+                selectedTeamId === null
+                  ? "#fff"
+                  : isDark
+                    ? "#818CF8"
+                    : "#4F46E5"
+              }
             />
             <Text
               style={[
                 styles.addTeamPillText,
+                isDark && { color: "#818CF8" },
                 selectedTeamId === null && { color: "#fff" },
               ]}
             >
@@ -599,109 +649,202 @@ export default function MyTeamScreen() {
         </ScrollView>
       </View>
 
-      {/* ✅ Team stats strip — 2 rows for 6 metrics */}
-      <View style={styles.teamStatsCard}>
-        {/* Row 1 — team-level metrics */}
+      <View
+        style={[
+          styles.teamStatsCard,
+          isDark && { backgroundColor: "#1E293B", borderColor: "#334155" },
+        ]}
+      >
         <View style={styles.teamStatsRowInner}>
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons
               name="account-group"
               size={18}
-              color="#4F46E5"
+              color={isDark ? "#818CF8" : "#4F46E5"}
             />
-            <Text style={styles.teamStatValue}>{teamCount}</Text>
-            <Text style={styles.teamStatLabel}>Teams</Text>
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
+              {teamCount}
+            </Text>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
+              Teams
+            </Text>
           </View>
-          <View style={styles.teamStatDivider} />
+          <View
+            style={[
+              styles.teamStatDivider,
+              isDark && { backgroundColor: "#334155" },
+            ]}
+          />
           <View style={styles.teamStatItem}>
-            <MaterialCommunityIcons name="crown" size={18} color="#D97706" />
-            <Text style={styles.teamStatValue}>{adminTeamCount}</Text>
-            <Text style={styles.teamStatLabel}>Leading</Text>
+            <MaterialCommunityIcons
+              name="crown"
+              size={18}
+              color={isDark ? "#FCD34D" : "#D97706"}
+            />
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
+              {adminTeamCount}
+            </Text>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
+              Leading
+            </Text>
           </View>
-          <View style={styles.teamStatDivider} />
+          <View
+            style={[
+              styles.teamStatDivider,
+              isDark && { backgroundColor: "#334155" },
+            ]}
+          />
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons
               name="account-multiple"
               size={18}
-              color="#0284C7"
+              color={isDark ? "#38BDF8" : "#0284C7"}
             />
-            <Text style={styles.teamStatValue}>
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
               {activeTeam
                 ? (activeTeam.members?.length ?? 0)
                 : allTeamsMemberCount()}
             </Text>
-            <Text style={styles.teamStatLabel}>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
               {activeTeam ? "Members" : "Total Members"}
             </Text>
           </View>
         </View>
 
-        {/* Row 2 — active team status */}
         <View style={styles.teamStatsRowInner}>
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons
               name="check-circle"
               size={18}
-              color="#16A34A"
+              color={isDark ? "#4ADE80" : "#16A34A"}
             />
-            <Text style={styles.teamStatValue}>
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
               {activeTeam ? teamOnlineCount(activeTeam) : allTeamsOnlineCount()}
             </Text>
-            <Text style={styles.teamStatLabel}>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
               {activeTeam ? "Online" : "Total Online"}
             </Text>
           </View>
-          <View style={styles.teamStatDivider} />
+          <View
+            style={[
+              styles.teamStatDivider,
+              isDark && { backgroundColor: "#334155" },
+            ]}
+          />
           <View style={styles.teamStatItem}>
-            <MaterialCommunityIcons name="login" size={18} color="#0284C7" />
-            <Text style={styles.teamStatValue}>
+            <MaterialCommunityIcons
+              name="login"
+              size={18}
+              color={isDark ? "#38BDF8" : "#0284C7"}
+            />
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
               {activeTeam
                 ? teamSignedInCount(activeTeam)
                 : allTeamsSignedInCount()}
             </Text>
-            <Text style={styles.teamStatLabel}>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
               {activeTeam ? "Signed In" : "Total Signed In"}
             </Text>
           </View>
-          <View style={styles.teamStatDivider} />
+          <View
+            style={[
+              styles.teamStatDivider,
+              isDark && { backgroundColor: "#334155" },
+            ]}
+          />
           <View style={styles.teamStatItem}>
             <MaterialCommunityIcons
               name="format-list-numbered"
               size={18}
-              color="#475569"
+              color={isDark ? "#CBD5E1" : "#475569"}
             />
-            <Text style={styles.teamStatValue}>
+            <Text
+              style={[styles.teamStatValue, isDark && { color: "#F8FAFC" }]}
+            >
               {teamCount}/{MAX_TEAMS}
             </Text>
-            <Text style={styles.teamStatLabel}>Slots</Text>
+            <Text
+              style={[styles.teamStatLabel, isDark && { color: "#94A3B8" }]}
+            >
+              Slots
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* If selectedTeamId is null, show Create/Join forms FIRST, then the user's teams */}
       {!activeTeam ? (
         <View style={{ paddingBottom: 20 }}>
           {teams.length >= MAX_TEAMS ? (
-            <View style={styles.limitCard}>
+            <View
+              style={[
+                styles.limitCard,
+                isDark && {
+                  backgroundColor: "#450A0A",
+                  borderColor: "#7F1D1D",
+                },
+              ]}
+            >
               <MaterialCommunityIcons
                 name="alert-circle"
                 size={40}
                 color="#DC2626"
                 style={{ alignSelf: "center", marginBottom: 10 }}
               />
-              <Text style={styles.limitTitle}>Team Limit Reached</Text>
-              <Text style={styles.limitText}>
+              <Text style={[styles.limitTitle, isDark && { color: "#FCA5A5" }]}>
+                Team Limit Reached
+              </Text>
+              <Text style={[styles.limitText, isDark && { color: "#FECACA" }]}>
                 You can only be part of a maximum of {MAX_TEAMS} teams. Please
                 contact admin if you need to create or join more.
               </Text>
             </View>
           ) : (
             <View style={styles.twoColumnRow}>
-              <View style={styles.halfCard}>
-                <Text style={styles.halfCardTitle}>Create</Text>
+              <View
+                style={[
+                  styles.halfCard,
+                  isDark && {
+                    backgroundColor: "#1E293B",
+                    borderColor: "#334155",
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.halfCardTitle, isDark && { color: "#F8FAFC" }]}
+                >
+                  Create
+                </Text>
                 <TextInput
-                  style={styles.compactInput}
+                  style={[
+                    styles.compactInput,
+                    isDark && {
+                      backgroundColor: "#0F172A",
+                      borderColor: "#334155",
+                      color: "#fff",
+                    },
+                  ]}
                   placeholder="Team Name"
+                  placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
                   value={teamName}
                   onChangeText={setTeamName}
                 />
@@ -713,11 +856,31 @@ export default function MyTeamScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.halfCard}>
-                <Text style={styles.halfCardTitle}>Join</Text>
+              <View
+                style={[
+                  styles.halfCard,
+                  isDark && {
+                    backgroundColor: "#1E293B",
+                    borderColor: "#334155",
+                  },
+                ]}
+              >
+                <Text
+                  style={[styles.halfCardTitle, isDark && { color: "#F8FAFC" }]}
+                >
+                  Join
+                </Text>
                 <TextInput
-                  style={styles.compactInput}
+                  style={[
+                    styles.compactInput,
+                    isDark && {
+                      backgroundColor: "#0F172A",
+                      borderColor: "#334155",
+                      color: "#fff",
+                    },
+                  ]}
                   placeholder="Join Code"
+                  placeholderTextColor={isDark ? "#64748B" : "#94A3B8"}
                   value={joinCode}
                   onChangeText={setJoinCode}
                   autoCapitalize="characters"
@@ -734,7 +897,9 @@ export default function MyTeamScreen() {
 
           {sortedTeams.length > 0 && (
             <View style={{ marginBottom: 4 }}>
-              <Text style={styles.cardTitle}>Your Teams</Text>
+              <Text style={[styles.cardTitle, isDark && { color: "#F8FAFC" }]}>
+                Your Teams
+              </Text>
               {sortedTeams.map((t) => {
                 const onlineCount = teamOnlineCount(t);
                 const signedInCount = teamSignedInCount(t);
@@ -743,7 +908,13 @@ export default function MyTeamScreen() {
                 return (
                   <TouchableOpacity
                     key={t.id}
-                    style={styles.teamListItem}
+                    style={[
+                      styles.teamListItem,
+                      isDark && {
+                        backgroundColor: "#1E293B",
+                        borderColor: "#334155",
+                      },
+                    ]}
                     onPress={() => setSelectedTeamId(t.id)}
                     activeOpacity={0.75}
                   >
@@ -752,54 +923,102 @@ export default function MyTeamScreen() {
                         style={[
                           styles.teamListBadge,
                           {
-                            backgroundColor: t.is_admin ? "#FEF3C7" : "#E0E7FF",
+                            backgroundColor: t.is_admin
+                              ? isDark
+                                ? "#422006"
+                                : "#FEF3C7"
+                              : isDark
+                                ? "#312E81"
+                                : "#E0E7FF",
                           },
                         ]}
                       >
                         <MaterialCommunityIcons
                           name={t.is_admin ? "crown" : "account"}
                           size={16}
-                          color={t.is_admin ? "#B45309" : "#4F46E5"}
+                          color={
+                            t.is_admin
+                              ? isDark
+                                ? "#FCD34D"
+                                : "#B45309"
+                              : isDark
+                                ? "#818CF8"
+                                : "#4F46E5"
+                          }
                         />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={styles.teamListName} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.teamListName,
+                            isDark && { color: "#F8FAFC" },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {t.name}
                         </Text>
-                        <Text style={styles.teamListRole}>
+                        <Text
+                          style={[
+                            styles.teamListRole,
+                            isDark && { color: "#94A3B8" },
+                          ]}
+                        >
                           {t.is_admin ? "Admin" : "Member"} • {totalMembers}{" "}
                           member{totalMembers === 1 ? "" : "s"}
                         </Text>
 
-                        {/* ✅ per-team status pills */}
                         <View style={styles.teamPillRow}>
-                          <View style={styles.teamStatusPill}>
+                          <View
+                            style={[
+                              styles.teamStatusPill,
+                              isDark && {
+                                backgroundColor: "#0F172A",
+                                borderColor: "#334155",
+                              },
+                            ]}
+                          >
                             <View
                               style={[
                                 styles.teamStatusDot,
-                                { backgroundColor: "#16A34A" },
+                                {
+                                  backgroundColor: isDark
+                                    ? "#4ADE80"
+                                    : "#16A34A",
+                                },
                               ]}
                             />
                             <Text
                               style={[
                                 styles.teamStatusPillText,
-                                { color: "#16A34A" },
+                                { color: isDark ? "#4ADE80" : "#16A34A" },
                               ]}
                             >
                               {onlineCount} online
                             </Text>
                           </View>
-                          <View style={styles.teamStatusPill}>
+                          <View
+                            style={[
+                              styles.teamStatusPill,
+                              isDark && {
+                                backgroundColor: "#0F172A",
+                                borderColor: "#334155",
+                              },
+                            ]}
+                          >
                             <View
                               style={[
                                 styles.teamStatusDot,
-                                { backgroundColor: "#0284C7" },
+                                {
+                                  backgroundColor: isDark
+                                    ? "#38BDF8"
+                                    : "#0284C7",
+                                },
                               ]}
                             />
                             <Text
                               style={[
                                 styles.teamStatusPillText,
-                                { color: "#0284C7" },
+                                { color: isDark ? "#38BDF8" : "#0284C7" },
                               ]}
                             >
                               {signedInCount} signed in
@@ -811,7 +1030,7 @@ export default function MyTeamScreen() {
                     <Ionicons
                       name="chevron-forward"
                       size={20}
-                      color="#94A3B8"
+                      color={isDark ? "#475569" : "#94A3B8"}
                     />
                   </TouchableOpacity>
                 );
@@ -820,11 +1039,13 @@ export default function MyTeamScreen() {
           )}
         </View>
       ) : (
-        /* Active Team Leaderboard */
         <>
           <View style={styles.header}>
             <View style={styles.headerTitleWrap}>
-              <Text style={styles.title} numberOfLines={1}>
+              <Text
+                style={[styles.title, isDark && { color: "#F8FAFC" }]}
+                numberOfLines={1}
+              >
                 {activeTeam.name}
               </Text>
               {activeTeam.is_admin && (
@@ -835,19 +1056,15 @@ export default function MyTeamScreen() {
                   <MaterialCommunityIcons
                     name="pencil-outline"
                     size={20}
-                    color="#0284C7"
+                    color={isDark ? "#38BDF8" : "#0284C7"}
                   />
                 </TouchableOpacity>
               )}
             </View>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              {/* 💬 Team Chat — available to all members */}
               <TouchableOpacity
                 style={styles.chatBtn}
                 onPress={() => {
-                  console.log("TEAM ID:", activeTeam.id);
-                  console.log("TEAM ID TYPE:", typeof activeTeam.id);
-
                   if (
                     !activeTeam?.id ||
                     !Number.isInteger(Number(activeTeam.id))
@@ -858,12 +1075,11 @@ export default function MyTeamScreen() {
                     );
                     return;
                   }
-
                   router.push({
                     pathname: "/teams/chat/[id]",
                     params: {
-                      idx: String(activeTeam.id), // ✅ correct param name
-                      id: String(activeTeam.id), // safety net
+                      idx: String(activeTeam.id),
+                      id: String(activeTeam.id),
                       name: activeTeam.name,
                     },
                   });
@@ -888,16 +1104,16 @@ export default function MyTeamScreen() {
             </View>
           </View>
 
-          <Text style={styles.subtitle}>Leaderboard</Text>
+          <Text style={[styles.subtitle, isDark && { color: "#94A3B8" }]}>
+            Leaderboard
+          </Text>
 
           <View style={{ paddingBottom: 20 }}>
             {leaderboard.map((item: any) => {
               const isMe =
                 Number(item.user_id) === Number(activeTeam.current_user_id);
-
-              // 🔥 Pull rank from rankMap and generate badge
               const rank = rankMap.get(item.user_id) ?? 0;
-              const badge = rank > 0 ? rankBadge(rank) : null;
+              const badge = rank > 0 ? rankBadge(rank, isDark) : null;
               const isAdmin = isTeamAdmin(item);
 
               const openMemberHistory = () => {
@@ -908,7 +1124,6 @@ export default function MyTeamScreen() {
                   );
                   return;
                 }
-
                 router.push({
                   pathname: "/teams/member/[idx]",
                   params: {
@@ -921,7 +1136,15 @@ export default function MyTeamScreen() {
               return (
                 <View
                   key={item.user_id}
-                  style={[styles.row, isMe && styles.rowMe]}
+                  style={[
+                    styles.row,
+                    isDark && {
+                      backgroundColor: "#1E293B",
+                      borderColor: "#334155",
+                    },
+                    isMe && styles.rowMe,
+                    isMe && isDark && { borderColor: "#6366F1" },
+                  ]}
                 >
                   <TouchableOpacity
                     style={styles.rowBody}
@@ -941,41 +1164,87 @@ export default function MyTeamScreen() {
 
                     <View style={styles.rowText}>
                       <View style={styles.nameRow}>
-                        <Text style={styles.memberName} numberOfLines={1}>
+                        <Text
+                          style={[
+                            styles.memberName,
+                            isDark && { color: "#F8FAFC" },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {item.name}
                         </Text>
 
                         {isAdmin && (
-                          <View style={styles.adminLabel}>
+                          <View
+                            style={[
+                              styles.adminLabel,
+                              isDark && { backgroundColor: "#422006" },
+                            ]}
+                          >
                             <MaterialCommunityIcons
                               name="crown"
                               size={13}
-                              color="#D97706"
+                              color={isDark ? "#FCD34D" : "#D97706"}
                             />
-                            <Text style={styles.adminLabelText}>Admin</Text>
+                            <Text
+                              style={[
+                                styles.adminLabelText,
+                                isDark && { color: "#FCD34D" },
+                              ]}
+                            >
+                              Admin
+                            </Text>
                           </View>
                         )}
 
                         {isMe && (
-                          <View style={styles.youLabel}>
-                            <Text style={styles.youLabelText}>You</Text>
+                          <View
+                            style={[
+                              styles.youLabel,
+                              isDark && { backgroundColor: "#064E3B" },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.youLabelText,
+                                isDark && { color: "#6EE7B7" },
+                              ]}
+                            >
+                              You
+                            </Text>
                           </View>
                         )}
                       </View>
 
                       <View style={styles.stepsWrap}>
-                        {/* 🏅 RANK BADGE — Matches admin.tsx EXACTLY */}
-                        {badge && (
-                          <View style={[styles.userRankBadge, badge.style]}>
-                            <Text style={styles.userRankText}>
-                              {badge.text}
-                            </Text>
-                          </View>
-                        )}
-                        <Text style={styles.stepsNumber}>
+                      {badge && (
+                        <View
+                          style={[
+                            styles.userRankBadge,
+                            { backgroundColor: badge.bg, borderColor: badge.border },
+                          ]}
+                        >
+                          <Text style={[styles.userRankText, { color: badge.color }]}>
+                            {badge.text}
+                          </Text>
+                        </View>
+                      )}
+                        <Text
+                          style={[
+                            styles.stepsNumber,
+                            isDark && { color: "#F8FAFC" },
+                          ]}
+                        >
                           {(item.steps_today ?? 0).toLocaleString()}
                         </Text>
-                        <Text style={styles.stepsLabel}>steps</Text>
+                        <Text
+                          style={[
+                            styles.stepsLabel,
+                            isDark && { color: "#94A3B8" },
+                          ]}
+                        >
+                          steps
+                        </Text>
                       </View>
 
                       <View
@@ -987,21 +1256,32 @@ export default function MyTeamScreen() {
                           flexWrap: "wrap",
                         }}
                       >
-                        <Text style={styles.memberStatus}>
+                        <Text
+                          style={[
+                            styles.memberStatus,
+                            isDark && { color: "#94A3B8" },
+                          ]}
+                        >
                           {item.is_signed_in ? "🟢 Signed In" : "⚪ Signed Out"}
                         </Text>
-
-                        <Text style={styles.memberStatus}>
+                        <Text
+                          style={[
+                            styles.memberStatus,
+                            isDark && { color: "#94A3B8" },
+                          ]}
+                        >
                           {isOnlineMember(item) ? "🟢 Online" : "⚪ Offline"}
                         </Text>
                       </View>
                     </View>
                   </TouchableOpacity>
 
-                  {/* 👑 Transfer admin — only visible to the current team admin, on non-admin members */}
                   {activeTeam.is_admin && !isMe && !isAdmin && (
                     <TouchableOpacity
-                      style={styles.makeAdminBtn}
+                      style={[
+                        styles.makeAdminBtn,
+                        isDark && { backgroundColor: "#0C4A6E" },
+                      ]}
                       disabled={isTransferring}
                       onPress={() =>
                         handleTransferAdmin(item.user_id, item.name)
@@ -1011,15 +1291,17 @@ export default function MyTeamScreen() {
                       <MaterialCommunityIcons
                         name="crown-outline"
                         size={18}
-                        color="#0284C7"
+                        color={isDark ? "#38BDF8" : "#0284C7"}
                       />
                     </TouchableOpacity>
                   )}
 
-                  {/* 🗑️ Trash — team admin can remove non-admin members */}
                   {activeTeam.is_admin && !isMe && !isAdmin && (
                     <TouchableOpacity
-                      style={styles.trashBtn}
+                      style={[
+                        styles.trashBtn,
+                        isDark && { backgroundColor: "#450A0A" },
+                      ]}
                       onPress={() => openDeleteModal(item.user_id, item.name)}
                     >
                       <Ionicons
@@ -1037,7 +1319,7 @@ export default function MyTeamScreen() {
                     <Ionicons
                       name="chevron-forward"
                       size={22}
-                      color="#94A3B8"
+                      color={isDark ? "#475569" : "#94A3B8"}
                     />
                   </TouchableOpacity>
                 </View>
@@ -1047,7 +1329,13 @@ export default function MyTeamScreen() {
 
           {activeTeam.is_admin && (
             <TouchableOpacity
-              style={styles.deleteTeamBtn}
+              style={[
+                styles.deleteTeamBtn,
+                isDark && {
+                  backgroundColor: "#450A0A",
+                  borderColor: "#7F1D1D",
+                },
+              ]}
               onPress={() => {
                 setDeleteTeamConfirmText("");
                 setDeleteTeamModalVisible(true);
@@ -1059,7 +1347,14 @@ export default function MyTeamScreen() {
                 color="#DC2626"
                 style={{ marginRight: 8 }}
               />
-              <Text style={styles.deleteTeamBtnText}>Delete Team</Text>
+              <Text
+                style={[
+                  styles.deleteTeamBtnText,
+                  isDark && { color: "#FCA5A5" },
+                ]}
+              >
+                Delete Team
+              </Text>
             </TouchableOpacity>
           )}
         </>
@@ -1068,27 +1363,41 @@ export default function MyTeamScreen() {
       {/* --- ALL MODALS --- */}
       <Modal visible={deleteTeamModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <MaterialCommunityIcons
                 name="delete-forever"
                 size={36}
                 color="#DC2626"
               />
-              <Text style={styles.modalTitle}>Delete Team?</Text>
+              <Text style={[styles.modalTitle, isDark && { color: "#F8FAFC" }]}>
+                Delete Team?
+              </Text>
             </View>
-            <Text style={styles.modalBody}>
+            <Text style={[styles.modalBody, isDark && { color: "#94A3B8" }]}>
               You are about to permanently delete{" "}
-              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
+              <Text
+                style={{
+                  fontWeight: "700",
+                  color: isDark ? "#fff" : "#0F172A",
+                }}
+              >
                 {activeTeam?.name}
               </Text>
               .
             </Text>
-            <Text style={styles.modalSubBody}>
+            <Text style={[styles.modalSubBody, isDark && { color: "#64748B" }]}>
               All members will be removed. Their personal step history will not
               be deleted.
             </Text>
-            <Text style={styles.modalInstruction}>
+            <Text
+              style={[styles.modalInstruction, isDark && { color: "#94A3B8" }]}
+            >
               Please type{" "}
               <Text style={{ fontWeight: "bold", color: "#DC2626" }}>
                 DELETE
@@ -1096,24 +1405,42 @@ export default function MyTeamScreen() {
               to confirm.
             </Text>
             <TextInput
-              style={styles.deleteInput}
+              style={[
+                styles.deleteInput,
+                isDark && {
+                  backgroundColor: "#0F172A",
+                  borderColor: "#334155",
+                  color: "#fff",
+                },
+              ]}
               placeholder="DELETE"
+              placeholderTextColor={isDark ? "#475569" : "#94A3B8"}
               value={deleteTeamConfirmText}
               onChangeText={setDeleteTeamConfirmText}
               autoCapitalize="characters"
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={[
+                  styles.modalBtnCancel,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setDeleteTeamModalVisible(false)}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.modalBtnCancelText,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalBtnDelete,
                   deleteTeamConfirmText !== "DELETE" && {
-                    backgroundColor: "#FCA5A5",
+                    backgroundColor: isDark ? "#450A0A" : "#FCA5A5",
                   },
                 ]}
                 disabled={deleteTeamConfirmText !== "DELETE" || isDeletingTeam}
@@ -1132,26 +1459,40 @@ export default function MyTeamScreen() {
 
       <Modal visible={deleteModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
             <View style={styles.modalHeader}>
               <MaterialCommunityIcons
                 name="alert-circle"
                 size={36}
                 color="#DC2626"
               />
-              <Text style={styles.modalTitle}>Remove Member?</Text>
+              <Text style={[styles.modalTitle, isDark && { color: "#F8FAFC" }]}>
+                Remove Member?
+              </Text>
             </View>
-            <Text style={styles.modalBody}>
+            <Text style={[styles.modalBody, isDark && { color: "#94A3B8" }]}>
               Remove{" "}
-              <Text style={{ fontWeight: "700", color: "#0F172A" }}>
+              <Text
+                style={{
+                  fontWeight: "700",
+                  color: isDark ? "#fff" : "#0F172A",
+                }}
+              >
                 {memberToDelete?.name}
               </Text>
               ?
             </Text>
-            <Text style={styles.modalSubBody}>
+            <Text style={[styles.modalSubBody, isDark && { color: "#64748B" }]}>
               Their fitness history will not be deleted.
             </Text>
-            <Text style={styles.modalInstruction}>
+            <Text
+              style={[styles.modalInstruction, isDark && { color: "#94A3B8" }]}
+            >
               Type{" "}
               <Text style={{ fontWeight: "bold", color: "#DC2626" }}>
                 DELETE
@@ -1159,24 +1500,42 @@ export default function MyTeamScreen() {
               to confirm.
             </Text>
             <TextInput
-              style={styles.deleteInput}
+              style={[
+                styles.deleteInput,
+                isDark && {
+                  backgroundColor: "#0F172A",
+                  borderColor: "#334155",
+                  color: "#fff",
+                },
+              ]}
               placeholder="DELETE"
+              placeholderTextColor={isDark ? "#475569" : "#94A3B8"}
               value={deleteConfirmText}
               onChangeText={setDeleteConfirmText}
               autoCapitalize="characters"
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={[
+                  styles.modalBtnCancel,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setDeleteModalVisible(false)}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.modalBtnCancelText,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalBtnDelete,
                   deleteConfirmText !== "DELETE" && {
-                    backgroundColor: "#FCA5A5",
+                    backgroundColor: isDark ? "#450A0A" : "#FCA5A5",
                   },
                 ]}
                 disabled={deleteConfirmText !== "DELETE" || isDeleting}
@@ -1195,15 +1554,36 @@ export default function MyTeamScreen() {
 
       <Modal visible={renameModalVisible} animationType="fade" transparent>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View
+            style={[
+              styles.modalContent,
+              isDark && { backgroundColor: "#1E293B" },
+            ]}
+          >
             <View style={styles.modalHeader}>
-              <MaterialCommunityIcons name="pencil" size={36} color="#0284C7" />
-              <Text style={styles.modalTitle}>Rename Team</Text>
+              <MaterialCommunityIcons
+                name="pencil"
+                size={36}
+                color={isDark ? "#38BDF8" : "#0284C7"}
+              />
+              <Text style={[styles.modalTitle, isDark && { color: "#F8FAFC" }]}>
+                Rename Team
+              </Text>
             </View>
-            <Text style={styles.modalBody}>Give your team a new name.</Text>
+            <Text style={[styles.modalBody, isDark && { color: "#94A3B8" }]}>
+              Give your team a new name.
+            </Text>
             <TextInput
-              style={styles.renameInput}
+              style={[
+                styles.renameInput,
+                isDark && {
+                  backgroundColor: "#0F172A",
+                  borderColor: "#334155",
+                  color: "#fff",
+                },
+              ]}
               placeholder="Team name"
+              placeholderTextColor={isDark ? "#475569" : "#94A3B8"}
               value={renameValue}
               onChangeText={setRenameValue}
               maxLength={150}
@@ -1211,17 +1591,27 @@ export default function MyTeamScreen() {
             />
             <View style={styles.modalActions}>
               <TouchableOpacity
-                style={styles.modalBtnCancel}
+                style={[
+                  styles.modalBtnCancel,
+                  isDark && { backgroundColor: "#334155" },
+                ]}
                 onPress={() => setRenameModalVisible(false)}
                 disabled={isRenaming}
               >
-                <Text style={styles.modalBtnCancelText}>Cancel</Text>
+                <Text
+                  style={[
+                    styles.modalBtnCancelText,
+                    isDark && { color: "#E2E8F0" },
+                  ]}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.modalBtnSave,
                   (isRenaming || !renameValue.trim()) && {
-                    backgroundColor: "#7DD3FC",
+                    backgroundColor: isDark ? "#0369A1" : "#7DD3FC",
                   },
                 ]}
                 onPress={executeRenameTeam}
@@ -1242,36 +1632,17 @@ export default function MyTeamScreen() {
 }
 
 const styles = StyleSheet.create({
-  // 🔥 EXACT RANK STYLES FROM ADMIN.TSX
   userRankBadge: {
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 7,
     borderWidth: 1,
   },
-  firstRank: {
-    backgroundColor: "#DBEAFE",
-    borderColor: "#93C5FD",
-  },
-  secondRank: {
-    backgroundColor: "#EDE9FE",
-    borderColor: "#C4B5FD",
-  },
-  thirdRank: {
-    backgroundColor: "#CFFAFE",
-    borderColor: "#67E8F9",
-  },
-  otherRank: {
-    backgroundColor: "#EEF2FF",
-    borderColor: "#C7D2FE",
-  },
-  userRankText: {
-    fontSize: 11,
-    fontWeight: "800",
-    color: "#3730A3",
-  },
-
-  // 🔥 EXACT BADGE STYLES FROM ADMIN TEAM FILE
+  firstRank: { backgroundColor: "#DBEAFE", borderColor: "#93C5FD" },
+  secondRank: { backgroundColor: "#EDE9FE", borderColor: "#C4B5FD" },
+  thirdRank: { backgroundColor: "#CFFAFE", borderColor: "#67E8F9" },
+  otherRank: { backgroundColor: "#EEF2FF", borderColor: "#C7D2FE" },
+  userRankText: { fontSize: 11, fontWeight: "800", color: "#3730A3" },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1287,30 +1658,15 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     gap: 3,
   },
-  adminLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#92400E",
-  },
+  adminLabelText: { fontSize: 10, fontWeight: "800", color: "#92400E" },
   youLabel: {
     backgroundColor: "#DCFCE7",
     paddingHorizontal: 7,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  youLabelText: {
-    fontSize: 10,
-    fontWeight: "800",
-    color: "#15803D",
-  },
-
-  // Per-team status pills (in the "Your Teams" list)
-  teamPillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-    marginTop: 6,
-  },
+  youLabelText: { fontSize: 10, fontWeight: "800", color: "#15803D" },
+  teamPillRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
   teamStatusPill: {
     flexDirection: "row",
     alignItems: "center",
@@ -1322,17 +1678,8 @@ const styles = StyleSheet.create({
     borderColor: "#E2E8F0",
     gap: 5,
   },
-  teamStatusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  teamStatusPillText: {
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.2,
-  },
-  // Team stats (2-row card)
+  teamStatusDot: { width: 6, height: 6, borderRadius: 3 },
+  teamStatusPillText: { fontSize: 11, fontWeight: "700", letterSpacing: 0.2 },
   teamStatsCard: {
     backgroundColor: "#fff",
     borderRadius: 14,
@@ -1356,9 +1703,7 @@ const styles = StyleSheet.create({
     color: "#64748B",
     marginVertical: 15,
   },
-
-  // Team Switcher
-  switcherContainer: { marginBottom: 10, marginTop: -5 },
+  switcherContainer: { marginBottom: 10, marginTop: 5 },
   switcherScroll: { gap: 10, paddingVertical: 10 },
   teamPill: {
     paddingHorizontal: 16,
@@ -1379,18 +1724,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#C7D2FE",
   },
-  addTeamPillActive: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
+  addTeamPillActive: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
   addTeamPillText: {
     fontSize: 14,
     fontWeight: "600",
     color: "#4F46E5",
     marginLeft: 4,
   },
-
-  // Forms / Limit
   card: {
     backgroundColor: "#fff",
     padding: 20,
@@ -1426,7 +1766,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   btnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
-
   limitCard: {
     backgroundColor: "#FEF2F2",
     padding: 24,
@@ -1448,8 +1787,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     lineHeight: 20,
   },
-
-  // Header
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1465,22 +1802,19 @@ const styles = StyleSheet.create({
   shareBtn: {
     flexDirection: "row",
     backgroundColor: "#4F46E5",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 20,
     alignItems: "center",
   },
-
   chatBtn: {
     flexDirection: "row",
     backgroundColor: "#0284C7",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 20,
     alignItems: "center",
   },
-
-  // List row
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -1516,15 +1850,8 @@ const styles = StyleSheet.create({
     marginRight: 8,
     minWidth: 76,
   },
-  stepsNumber: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0F172A",
-  },
-  stepsLabel: {
-    fontSize: 14,
-    color: "#64748B",
-  },
+  stepsNumber: { fontSize: 18, fontWeight: "800", color: "#0F172A" },
+  stepsLabel: { fontSize: 14, color: "#64748B" },
   trashBtn: {
     width: 30,
     height: 30,
@@ -1556,8 +1883,6 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   deleteTeamBtnText: { color: "#DC2626", fontWeight: "800", fontSize: 15 },
-
-  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(15, 23, 42, 0.6)",
@@ -1647,12 +1972,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   modalBtnSaveText: { color: "#FFFFFF", fontWeight: "700", fontSize: 15 },
-
   teamStatItem: { flex: 1, alignItems: "center", gap: 2 },
   teamStatValue: { fontSize: 15, fontWeight: "800", color: "#0F172A" },
   teamStatLabel: { fontSize: 10, fontWeight: "600", color: "#64748B" },
   teamStatDivider: { width: 1, height: 28, backgroundColor: "#E2E8F0" },
-
   teamListItem: {
     flexDirection: "row",
     alignItems: "center",
@@ -1678,22 +2001,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  teamListName: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0F172A",
-  },
-  teamListRole: {
-    fontSize: 12,
-    color: "#64748B",
-    marginTop: 2,
-  },
-
-  twoColumnRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 20,
-  },
+  teamListName: { fontSize: 15, fontWeight: "700", color: "#0F172A" },
+  teamListRole: { fontSize: 12, color: "#64748B", marginTop: 2 },
+  twoColumnRow: { flexDirection: "row", gap: 10, marginBottom: 20 },
   halfCard: {
     flex: 1,
     backgroundColor: "#fff",
