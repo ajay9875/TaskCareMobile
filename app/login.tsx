@@ -14,6 +14,7 @@ import {
 import StepTracker from "react-native-step-tracker-pro";
 import LoadingOverlay from "../components/LoadingOverlay";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import { registerForPushNotifications } from "../utils/pushNotifications";
 import { getNativeSyncToken, updateNativeTarget } from "../utils/stepTracker";
 
@@ -24,6 +25,9 @@ import Recaptcha, { RecaptchaRef } from "react-native-recaptcha-that-works";
 const RECAPTCHA_SITE_KEY = "6LeaXyouAAAAADrXvmLw58CSALnKXGnLrx7tezvv";
 
 export default function Login() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
@@ -152,34 +156,41 @@ export default function Login() {
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons
             name="shield-account"
             size={40}
             color="#3498db"
           />
-          <Text style={styles.pageHeaderTitle}>Welcome Back</Text>
-          <Text style={styles.pageHeaderSubtitle}>
+          <Text style={[styles.pageHeaderTitle, isDark && styles.textLight]}>
+            Welcome Back
+          </Text>
+          <Text style={[styles.pageHeaderSubtitle, isDark && styles.textMuted]}>
             Sign in to continue your progress.
           </Text>
         </View>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && styles.inputDark]}
           placeholder="Email"
-          placeholderTextColor="#666"
+          placeholderTextColor={isDark ? "#64748B" : "#666"}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
           editable={!loading}
         />
 
-        <View style={styles.passwordContainer}>
+        <View
+          style={[
+            styles.passwordContainer,
+            isDark && styles.passwordContainerDark,
+          ]}
+        >
           <TextInput
-            style={styles.passwordInput}
+            style={[styles.passwordInput, isDark && { color: "#fff" }]}
             placeholder="Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={isDark ? "#64748B" : "#666"}
             secureTextEntry={!isPasswordVisible}
             value={password}
             onChangeText={setPassword}
@@ -193,7 +204,7 @@ export default function Login() {
             <MaterialCommunityIcons
               name={isPasswordVisible ? "eye-off" : "eye"}
               size={24}
-              color="#666"
+              color={isDark ? "#94A3B8" : "#666"}
             />
           </TouchableOpacity>
         </View>
@@ -248,6 +259,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#faf3f3",
   },
+  containerDark: { backgroundColor: "#0F172A" },
+  textLight: { color: "#fff" },
+  textMuted: { color: "#94A3B8" },
   pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 28,
@@ -270,6 +284,11 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     color: "#000",
   },
+  inputDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
+    color: "#fff",
+  },
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -277,6 +296,10 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderRadius: 8,
     marginBottom: 15,
+  },
+  passwordContainerDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
   },
   passwordInput: { flex: 1, padding: 12, color: "#000" },
   eyeIcon: { padding: 10 },

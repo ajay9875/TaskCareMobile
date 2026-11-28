@@ -1217,18 +1217,26 @@ export default function MyTeamScreen() {
                       </View>
 
                       <View style={styles.stepsWrap}>
-                      {badge && (
-                        <View
-                          style={[
-                            styles.userRankBadge,
-                            { backgroundColor: badge.bg, borderColor: badge.border },
-                          ]}
-                        >
-                          <Text style={[styles.userRankText, { color: badge.color }]}>
-                            {badge.text}
-                          </Text>
-                        </View>
-                      )}
+                        {badge && (
+                          <View
+                            style={[
+                              styles.userRankBadge,
+                              {
+                                backgroundColor: badge.bg,
+                                borderColor: badge.border,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.userRankText,
+                                { color: badge.color },
+                              ]}
+                            >
+                              {badge.text}
+                            </Text>
+                          </View>
+                        )}
                         <Text
                           style={[
                             styles.stepsNumber,

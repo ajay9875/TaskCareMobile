@@ -11,8 +11,12 @@ import {
   View,
 } from "react-native";
 import LoadingOverlay from "../components/LoadingOverlay";
+import { useTheme } from "../context/ThemeContext";
 
 export default function VerifyOTP() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [otp, setOtp] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -55,25 +59,29 @@ export default function VerifyOTP() {
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons
             name="shield-check"
             size={40}
             color="#2ECC71"
           />
-          <Text style={styles.pageHeaderTitle}>Verify OTP</Text>
-          <Text style={styles.pageHeaderSubtitle}>
+          <Text style={[styles.pageHeaderTitle, isDark && styles.textLight]}>
+            Verify OTP
+          </Text>
+          <Text style={[styles.pageHeaderSubtitle, isDark && styles.textMuted]}>
             Enter the 6-digit code sent to your email.
           </Text>
         </View>
 
-        <Text style={styles.desc}>Enter the 6-digit code sent to {email}</Text>
+        <Text style={[styles.desc, isDark && styles.textMuted]}>
+          Enter the 6-digit code sent to {email}
+        </Text>
 
         <TextInput
-          style={styles.otpInput}
+          style={[styles.otpInput, isDark && styles.otpInputDark]}
           placeholder="000000"
-          placeholderTextColor="#666"
+          placeholderTextColor={isDark ? "#64748B" : "#666"}
           value={otp}
           onChangeText={setOtp}
           keyboardType="number-pad"
@@ -82,8 +90,12 @@ export default function VerifyOTP() {
         />
 
         {/* ✅ React Native styled Spam Warning */}
-        <View style={styles.spamWarningBox}>
-          <Text style={styles.spamWarningText}>
+        <View
+          style={[styles.spamWarningBox, isDark && styles.spamWarningBoxDark]}
+        >
+          <Text
+            style={[styles.spamWarningText, isDark && { color: "#94A3B8" }]}
+          >
             📬 <Text style={{ fontWeight: "bold" }}>Can't find the email?</Text>{" "}
             Please check your Spam or Junk folder. If you find it there, please
             mark it as "Not Spam" to ensure you receive future updates.
@@ -112,6 +124,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#fff",
   },
+  containerDark: { backgroundColor: "#0F172A" },
+  textLight: { color: "#fff" },
+  textMuted: { color: "#94A3B8" },
   pageHeaderBlock: {
     alignItems: "center",
     marginBottom: 30,
@@ -151,6 +166,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20, // Reduced margin to fit the warning box
   },
+  otpInputDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
+    color: "#fff",
+  },
   // ✅ Added new styles for the spam warning
   spamWarningBox: {
     backgroundColor: "#f8fafc",
@@ -160,6 +180,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#cbd5e1",
     borderStyle: "dashed",
+  },
+  spamWarningBoxDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
   },
   spamWarningText: {
     color: "#64748b",

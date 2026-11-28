@@ -12,8 +12,12 @@ import {
   View,
 } from "react-native";
 import LoadingOverlay from "../components/LoadingOverlay";
+import { useTheme } from "../context/ThemeContext";
 
 export default function Signup() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [cemail, setCemail] = useState("");
@@ -88,25 +92,35 @@ export default function Signup() {
     }
   };
 
+  const phColor = isDark ? "#64748B" : "#666";
+
   return (
     <>
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.container,
+          isDark && styles.containerDark,
+        ]}
+        style={isDark ? { backgroundColor: "#0F172A" } : undefined}
+      >
         <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons
             name="account-plus"
             size={40}
-            color="#0300a8"
+            color={isDark ? "#818CF8" : "#0300a8"}
           />
-          <Text style={styles.pageHeaderTitle}>Create Account</Text>
-          <Text style={styles.pageHeaderSubtitle}>
+          <Text style={[styles.pageHeaderTitle, isDark && styles.textLight]}>
+            Create Account
+          </Text>
+          <Text style={[styles.pageHeaderSubtitle, isDark && styles.textMuted]}>
             Join FitWisely to organize your life.
           </Text>
         </View>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && styles.inputDark]}
           placeholder="Full Name"
-          placeholderTextColor="#666"
+          placeholderTextColor={phColor}
           value={name}
           onChangeText={setName}
           autoCapitalize="words"
@@ -114,9 +128,9 @@ export default function Signup() {
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && styles.inputDark]}
           placeholder="Email Address"
-          placeholderTextColor="#666"
+          placeholderTextColor={phColor}
           value={email}
           keyboardType="email-address"
           autoCapitalize="none"
@@ -125,9 +139,9 @@ export default function Signup() {
         />
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && styles.inputDark]}
           placeholder="Confirm Email"
-          placeholderTextColor="#666"
+          placeholderTextColor={phColor}
           value={cemail}
           keyboardType="email-address"
           autoCapitalize="none"
@@ -135,11 +149,16 @@ export default function Signup() {
           editable={!isSubmitting}
         />
 
-        <View style={styles.passwordContainer}>
+        <View
+          style={[
+            styles.passwordContainer,
+            isDark && styles.passwordContainerDark,
+          ]}
+        >
           <TextInput
-            style={styles.passwordInput}
+            style={[styles.passwordInput, isDark && { color: "#fff" }]}
             placeholder="Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={phColor}
             secureTextEntry={!isPasswordVisible}
             value={password}
             onChangeText={setPassword}
@@ -153,7 +172,7 @@ export default function Signup() {
             <MaterialCommunityIcons
               name={isPasswordVisible ? "eye-off" : "eye"}
               size={24}
-              color="#666"
+              color={isDark ? "#94A3B8" : "#666"}
             />
           </TouchableOpacity>
         </View>
@@ -188,6 +207,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#FFFFFF",
   },
+  containerDark: { backgroundColor: "#0F172A" },
+  textLight: { color: "#fff" },
+  textMuted: { color: "#94A3B8" },
   pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 28,
@@ -211,6 +233,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFFFF",
     color: "#000000",
   },
+  inputDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
+    color: "#fff",
+  },
   passwordContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -219,6 +246,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 15,
     backgroundColor: "#FFFFFF",
+  },
+  passwordContainerDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
   },
   passwordInput: { flex: 1, padding: 12, color: "#000000" },
   eyeIcon: { padding: 10 },

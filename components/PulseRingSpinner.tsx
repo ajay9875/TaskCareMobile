@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 
 type Props = {
@@ -8,10 +8,18 @@ type Props = {
   ringCount?: number;
 };
 
+// ⬇️ Copy these values from your CSS (.sp-12__ring / .sp-12__dot keyframes)
+const RING_DURATION = 1200; // animation-duration of the ring
+const RING_STAGGER = 250; // animation-delay step between rings
+const RING_BORDER = 2; // border width of .sp-12__ring
+const RING_START_SCALE = 0.3; // scale at 0%
+const RING_START_OPACITY = 0.8; // opacity at 0%
+const DOT_RATIO = 0.25; // dot size relative to the spinner size
+
 export default function PulseRingSpinner({
   size = 120,
-  ringColor = "#0300a8", // ← Brand Logo Color for rings
-  dotColor = "#00c8ff",  // ← Bright Cyan for the center dot
+  ringColor = "#00c8ff",
+  dotColor = "#00c8ff",
   ringCount = 4,
 }: Props) {
   const rings = useRef(
@@ -23,11 +31,11 @@ export default function PulseRingSpinner({
     const ringAnimations = rings.map((ring, index) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(index * 250),
+          Animated.delay(index * RING_STAGGER),
           Animated.timing(ring, {
             toValue: 1,
-            duration: 1200,
-            easing: Easing.out(Easing.quad),
+            duration: RING_DURATION,
+            easing: Easing.out(Easing.ease),
             useNativeDriver: true,
           }),
           Animated.timing(ring, {
@@ -68,13 +76,13 @@ export default function PulseRingSpinner({
   const ringStyle = (value: Animated.Value) => ({
     opacity: value.interpolate({
       inputRange: [0, 1],
-      outputRange: [0.6, 0], // Fade out
+      outputRange: [RING_START_OPACITY, 0],
     }),
     transform: [
       {
         scale: value.interpolate({
           inputRange: [0, 1],
-          outputRange: [0.3, 1],
+          outputRange: [RING_START_SCALE, 1],
         }),
       },
     ],
@@ -82,31 +90,13 @@ export default function PulseRingSpinner({
 
   const dotScale = dot.interpolate({
     inputRange: [0, 1],
-    outputRange: [0.9, 1.1],
+    outputRange: [0.9, 1.15],
   });
 
-  const glowScale = dot.interpolate({
-    inputRange: [0, 1],
-    outputRange: [2.5, 3.0],
-  });
+  const dotSize = size * DOT_RATIO;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {/* Glow halo */}
-      <Animated.View
-        style={[
-          styles.glow,
-          {
-            width: size * 0.25,
-            height: size * 0.25,
-            borderRadius: (size * 0.25) / 2,
-            backgroundColor: dotColor,
-            transform: [{ scale: glowScale }],
-          },
-        ]}
-      />
-
-      {/* Rings */}
       {rings.map((ringValue, i) => (
         <Animated.View
           key={i}
@@ -117,21 +107,20 @@ export default function PulseRingSpinner({
               height: size,
               borderRadius: size / 2,
               borderColor: ringColor,
-              borderWidth: 1.5,
+              borderWidth: RING_BORDER,
             },
             ringStyle(ringValue),
           ]}
         />
       ))}
 
-      {/* Center dot */}
       <Animated.View
         style={[
           styles.dot,
           {
-            width: size * 0.25,
-            height: size * 0.25,
-            borderRadius: (size * 0.25) / 2,
+            width: dotSize,
+            height: dotSize,
+            borderRadius: dotSize / 2,
             backgroundColor: dotColor,
             transform: [{ scale: dotScale }],
           },
@@ -145,5 +134,4 @@ const styles = StyleSheet.create({
   container: { justifyContent: "center", alignItems: "center" },
   ring: { position: "absolute" },
   dot: { position: "absolute" },
-  glow: { position: "absolute", opacity: 0.35 },
 });

@@ -11,8 +11,12 @@ import {
   View,
 } from "react-native";
 import LoadingOverlay from "../components/LoadingOverlay"; // ← NEW
+import { useTheme } from "../context/ThemeContext";
 
 export default function ResetPassword() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [password, setPassword] = useState("");
   const [cpassword, setCpassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -69,20 +73,27 @@ export default function ResetPassword() {
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons name="lock-open" size={40} color="#E74C3C" />
-          <Text style={styles.pageHeaderTitle}>New Password</Text>
-          <Text style={styles.pageHeaderSubtitle}>
+          <Text style={[styles.pageHeaderTitle, isDark && styles.textLight]}>
+            New Password
+          </Text>
+          <Text style={[styles.pageHeaderSubtitle, isDark && styles.textMuted]}>
             Create a strong, secure password.
           </Text>
         </View>
 
-        <View style={styles.passwordContainer}>
+        <View
+          style={[
+            styles.passwordContainer,
+            isDark && styles.passwordContainerDark,
+          ]}
+        >
           <TextInput
-            style={styles.passwordInput}
+            style={[styles.passwordInput, isDark && { color: "#fff" }]}
             placeholder="New Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={isDark ? "#64748B" : "#666"}
             secureTextEntry={!isPVisible}
             value={password}
             onChangeText={setPassword}
@@ -96,16 +107,21 @@ export default function ResetPassword() {
             <MaterialCommunityIcons
               name={isPVisible ? "eye-off" : "eye"}
               size={24}
-              color="#666"
+              color={isDark ? "#94A3B8" : "#666"}
             />
           </TouchableOpacity>
         </View>
 
-        <View style={styles.passwordContainer}>
+        <View
+          style={[
+            styles.passwordContainer,
+            isDark && styles.passwordContainerDark,
+          ]}
+        >
           <TextInput
-            style={styles.passwordInput}
+            style={[styles.passwordInput, isDark && { color: "#fff" }]}
             placeholder="Confirm Password"
-            placeholderTextColor="#666"
+            placeholderTextColor={isDark ? "#64748B" : "#666"}
             secureTextEntry={!isCPVisible}
             value={cpassword}
             onChangeText={setCpassword}
@@ -119,7 +135,7 @@ export default function ResetPassword() {
             <MaterialCommunityIcons
               name={isCPVisible ? "eye-off" : "eye"}
               size={24}
-              color="#666"
+              color={isDark ? "#94A3B8" : "#666"}
             />
           </TouchableOpacity>
         </View>
@@ -147,6 +163,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#fff",
   },
+  containerDark: { backgroundColor: "#0F172A" },
+  textLight: { color: "#fff" },
+  textMuted: { color: "#94A3B8" },
   pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 26,
@@ -178,6 +197,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginBottom: 15,
     backgroundColor: "#FFFFFF",
+  },
+  passwordContainerDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
   },
   passwordInput: {
     flex: 1,

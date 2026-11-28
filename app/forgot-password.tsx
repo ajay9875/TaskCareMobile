@@ -11,8 +11,12 @@ import {
   View,
 } from "react-native";
 import LoadingOverlay from "../components/LoadingOverlay"; // ← NEW
+import { useTheme } from "../context/ThemeContext";
 
 export default function ForgotPassword() {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -61,19 +65,21 @@ export default function ForgotPassword() {
 
   return (
     <>
-      <View style={styles.container}>
+      <View style={[styles.container, isDark && styles.containerDark]}>
         <View style={styles.pageHeaderBlock}>
           <MaterialCommunityIcons name="lock-reset" size={40} color="#e74c3c" />
-          <Text style={styles.pageHeaderTitle}>Reset Password</Text>
-          <Text style={styles.pageHeaderSubtitle}>
+          <Text style={[styles.pageHeaderTitle, isDark && styles.textLight]}>
+            Reset Password
+          </Text>
+          <Text style={[styles.pageHeaderSubtitle, isDark && styles.textMuted]}>
             Enter your email to receive an OTP.
           </Text>
         </View>
 
         <TextInput
-          style={styles.input}
+          style={[styles.input, isDark && styles.inputDark]}
           placeholder="Email Address"
-          placeholderTextColor="#666"
+          placeholderTextColor={isDark ? "#64748B" : "#666"}
           value={email}
           onChangeText={setEmail}
           keyboardType="email-address"
@@ -104,6 +110,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#f9f9f9",
   },
+  containerDark: { backgroundColor: "#0F172A" },
+  textLight: { color: "#fff" },
+  textMuted: { color: "#94A3B8" },
   pageHeaderBlock: { alignItems: "center", marginBottom: 30 },
   pageHeaderTitle: {
     fontSize: 26,
@@ -128,6 +137,11 @@ const styles = StyleSheet.create({
     color: "#000",
     borderWidth: 1,
     borderColor: "#eee",
+  },
+  inputDark: {
+    backgroundColor: "#1E293B",
+    borderColor: "#334155",
+    color: "#fff",
   },
   button: {
     backgroundColor: "#e74c3c",
